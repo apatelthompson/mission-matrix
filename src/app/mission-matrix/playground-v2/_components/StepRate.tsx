@@ -611,6 +611,14 @@ export default function StepRate({
 
   const visibleCardOffsets = [0, 1, 2].filter((o) => idx + o < total);
 
+  function goTo(target: number) {
+    if (target < 0 || target >= total || target === idx) return;
+    if (advanceTimer.current) clearTimeout(advanceTimer.current);
+    setFlying(false);
+    userTouchedRef.current = false;
+    setIdx(target);
+  }
+
   return (
     <PgFrame
       title="Score each task. Trust your gut."
@@ -619,7 +627,94 @@ export default function StepRate({
           <button className="pg-pill ghost" onClick={onBack}>
             ← Back
           </button>
-          <div style={{ display: "flex", gap: 10, marginLeft: "auto" }}>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+              marginLeft: "auto",
+              marginRight: "auto",
+            }}
+          >
+            <button
+              type="button"
+              onClick={() => goTo(idx - 1)}
+              disabled={idx === 0}
+              aria-label="Previous card"
+              style={{
+                width: 34,
+                height: 34,
+                borderRadius: 100,
+                background: "transparent",
+                border: "1.5px solid var(--line)",
+                color: idx === 0 ? "var(--ink-faint)" : "var(--ink-muted)",
+                fontFamily: "inherit",
+                cursor: idx === 0 ? "not-allowed" : "pointer",
+                fontSize: 14,
+                opacity: idx === 0 ? 0.5 : 1,
+              }}
+            >
+              ←
+            </button>
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 4,
+                padding: "0 6px",
+              }}
+            >
+              {items.map((it, i) => {
+                const isCur = i === idx;
+                const isScored = it.meaning != null && it.expertise != null;
+                return (
+                  <button
+                    key={it.order}
+                    type="button"
+                    onClick={() => goTo(i)}
+                    aria-label={`Card ${i + 1}${isScored ? " (scored)" : ""}`}
+                    style={{
+                      width: isCur ? 22 : 8,
+                      height: 8,
+                      borderRadius: 100,
+                      background: isCur
+                        ? "var(--forest)"
+                        : isScored
+                          ? "var(--moss)"
+                          : "var(--line)",
+                      border: "none",
+                      cursor: "pointer",
+                      padding: 0,
+                      transition:
+                        "width .2s ease, background .15s ease, transform .12s ease",
+                    }}
+                  />
+                );
+              })}
+            </div>
+            <button
+              type="button"
+              onClick={() => goTo(idx + 1)}
+              disabled={idx >= total - 1}
+              aria-label="Next card"
+              style={{
+                width: 34,
+                height: 34,
+                borderRadius: 100,
+                background: "transparent",
+                border: "1.5px solid var(--line)",
+                color:
+                  idx >= total - 1 ? "var(--ink-faint)" : "var(--ink-muted)",
+                fontFamily: "inherit",
+                cursor: idx >= total - 1 ? "not-allowed" : "pointer",
+                fontSize: 14,
+                opacity: idx >= total - 1 ? 0.5 : 1,
+              }}
+            >
+              →
+            </button>
+          </div>
+          <div style={{ display: "flex", gap: 10 }}>
             <button
               className="pg-pill primary"
               onClick={onNext}

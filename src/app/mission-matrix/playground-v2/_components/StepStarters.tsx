@@ -60,64 +60,96 @@ function TaskRow({
   checked,
   starter,
   onToggle,
+  onEditText,
   onDelete,
 }: {
   text: string;
   checked: boolean;
   starter: boolean;
   onToggle: () => void;
+  onEditText: (next: string) => void;
   onDelete: () => void;
 }) {
+  // Row is a div (not a button) so clicking inside the input doesn't
+  // toggle selection. The checkbox handles toggle on its own click.
   return (
-    <button
-      type="button"
-      onClick={onToggle}
+    <div
       style={{
         display: "flex",
         alignItems: "center",
         gap: 12,
         width: "100%",
-        textAlign: "left",
         padding: "10px 14px",
         background: checked ? "var(--forest-soft)" : "transparent",
         border: `1px solid ${checked ? "#C7D3B5" : "transparent"}`,
         borderRadius: 10,
-        cursor: "pointer",
-        fontFamily: "inherit",
         transition: "background .15s ease, border-color .15s ease",
       }}
       onMouseEnter={(e) => {
         if (!checked)
-          (e.currentTarget as HTMLButtonElement).style.background =
+          (e.currentTarget as HTMLDivElement).style.background =
             "var(--paper-soft)";
       }}
       onMouseLeave={(e) => {
         if (!checked)
-          (e.currentTarget as HTMLButtonElement).style.background = "transparent";
+          (e.currentTarget as HTMLDivElement).style.background = "transparent";
       }}
     >
-      <PgCheck checked={checked} />
-      <span
+      <button
+        type="button"
+        onClick={onToggle}
+        aria-label={checked ? "Uncheck" : "Check"}
         style={{
+          appearance: "none",
+          background: "transparent",
+          border: "none",
+          padding: 0,
+          cursor: "pointer",
+          display: "flex",
+          alignItems: "center",
+          flexShrink: 0,
+        }}
+      >
+        <PgCheck checked={checked} />
+      </button>
+      <input
+        type="text"
+        value={text}
+        onChange={(e) => onEditText(e.target.value)}
+        placeholder="Edit this task or write your own…"
+        style={{
+          flex: 1,
+          minWidth: 0,
           fontSize: 15,
           lineHeight: 1.3,
           color: checked ? "var(--ink)" : "var(--ink-soft)",
           fontWeight: checked ? 500 : 400,
-          flex: 1,
-          minWidth: 0,
-          whiteSpace: "nowrap",
-          overflow: "hidden",
-          textOverflow: "ellipsis",
+          fontFamily: "inherit",
+          background: "transparent",
+          border: "1px solid transparent",
+          borderRadius: 6,
+          padding: "4px 8px",
+          margin: "-4px -8px",
+          transition: "background .12s ease, border-color .12s ease",
         }}
-      >
-        {text}
-      </span>
+        onFocus={(e) => {
+          (e.currentTarget as HTMLInputElement).style.background =
+            "rgba(255,255,255,0.7)";
+          (e.currentTarget as HTMLInputElement).style.borderColor =
+            "var(--rule)";
+        }}
+        onBlur={(e) => {
+          (e.currentTarget as HTMLInputElement).style.background =
+            "transparent";
+          (e.currentTarget as HTMLInputElement).style.borderColor =
+            "transparent";
+        }}
+      />
       {!starter && (
-        <span
-          onClick={(e) => {
-            e.stopPropagation();
-            onDelete();
-          }}
+        <button
+          type="button"
+          onClick={onDelete}
+          aria-label="Remove task"
           style={{
             fontSize: 10,
             fontWeight: 700,
@@ -127,14 +159,16 @@ function TaskRow({
             padding: "3px 8px",
             borderRadius: 100,
             border: "1px solid var(--line)",
+            background: "transparent",
             cursor: "pointer",
             flexShrink: 0,
+            fontFamily: "inherit",
           }}
         >
           your own
-        </span>
+        </button>
       )}
-    </button>
+    </div>
   );
 }
 
@@ -214,6 +248,13 @@ export default function StepStarters({
       rs.map((r, j) => (j === i ? { ...r, selected: !r.selected } : r)),
     );
   }
+  function editText(i: number, text: string) {
+    // Editing a seed row converts it to a custom row — once it's been
+    // edited it's functionally the user's own, and we want it deletable.
+    setRows((rs) =>
+      rs.map((r, j) => (j === i ? { ...r, text, starter: false } : r)),
+    );
+  }
   function removeRow(i: number) {
     setRows((rs) => rs.filter((_, j) => j !== i));
   }
@@ -262,6 +303,22 @@ export default function StepStarters({
           marginRight: -8,
         }}
       >
+        {rows.length === 0 && (
+          <div
+            style={{
+              padding: "20px 14px",
+              fontSize: 14,
+              color: "var(--ink-muted)",
+              fontStyle: "italic",
+              lineHeight: 1.5,
+            }}
+          >
+            We don&apos;t have starter tasks for this function yet — use
+            <strong style={{ color: "var(--forest)" }}> + Add your own </strong>
+            below to list the work that fills your typical week. Five or more
+            to continue.
+          </div>
+        )}
         {rows.map((r, i) => (
           <TaskRow
             key={r.id}
@@ -269,6 +326,7 @@ export default function StepStarters({
             checked={r.selected}
             starter={r.starter}
             onToggle={() => toggle(i)}
+            onEditText={(t) => editText(i, t)}
             onDelete={() => removeRow(i)}
           />
         ))}

@@ -55,10 +55,12 @@ const TITLE_SUGGESTIONS = [
 ];
 
 function Field({
+  htmlFor,
   label,
   optional,
   children,
 }: {
+  htmlFor: string;
   label: string;
   optional?: boolean;
   children: ReactNode;
@@ -66,6 +68,7 @@ function Field({
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
       <label
+        htmlFor={htmlFor}
         style={{
           fontSize: 14,
           fontWeight: 700,
@@ -102,6 +105,7 @@ export default function StepProfile({ onNext }: { onNext: () => void }) {
 
   return (
     <PgFrame
+      narrow
       title="A quick hello."
       subhead="A few details to ground the exercise — and to help us understand how this framework lands across different kinds of work. Nothing here is shared publicly."
       bottom={
@@ -118,11 +122,11 @@ export default function StepProfile({ onNext }: { onNext: () => void }) {
           columnGap: 32,
           rowGap: 16,
           marginTop: 8,
-          maxWidth: 720,
         }}
       >
-        <Field label="What best describes your work?">
+        <Field htmlFor="career_stage" label="What best describes your work?">
           <select
+            id="career_stage"
             className="pg-select"
             value={state.career_stage ?? ""}
             onChange={(e) =>
@@ -140,15 +144,29 @@ export default function StepProfile({ onNext }: { onNext: () => void }) {
           </select>
         </Field>
 
-        <Field label="Function">
+        <Field htmlFor="function_area" label="Function">
           <select
+            id="function_area"
             className="pg-select"
             value={state.function_area ?? ""}
-            onChange={(e) =>
-              update({
-                function_area: e.target.value as typeof state.function_area,
-              })
-            }
+            onChange={(e) => {
+              const nextFn = e.target.value as typeof state.function_area;
+              // If they're switching function after items exist, the
+              // brain dump's seed list needs to reset — otherwise it
+              // shows the prior function's items as "custom rows".
+              const hadItems = state.items.some((it) => it.text.trim());
+              if (
+                nextFn !== state.function_area &&
+                hadItems &&
+                // Don't blow away ratings if they only revisited the
+                // dropdown without changing it
+                state.function_area
+              ) {
+                update({ function_area: nextFn, items: [] });
+              } else {
+                update({ function_area: nextFn });
+              }
+            }}
           >
             <option value="">Choose one…</option>
             {FUNCTION_AREAS.map((f) => (
@@ -159,8 +177,9 @@ export default function StepProfile({ onNext }: { onNext: () => void }) {
           </select>
         </Field>
 
-        <Field label="Title">
+        <Field htmlFor="role_title" label="Title">
           <input
+            id="role_title"
             className="pg-input"
             type="text"
             list="pg-title-suggestions"
@@ -176,8 +195,9 @@ export default function StepProfile({ onNext }: { onNext: () => void }) {
           </datalist>
         </Field>
 
-        <Field label="Team size you manage">
+        <Field htmlFor="team_size_managed" label="Team size you manage">
           <select
+            id="team_size_managed"
             className="pg-select"
             value={state.team_size_managed ?? ""}
             onChange={(e) =>
@@ -196,8 +216,9 @@ export default function StepProfile({ onNext }: { onNext: () => void }) {
           </select>
         </Field>
 
-        <Field label="Company size">
+        <Field htmlFor="company_size" label="Company size">
           <select
+            id="company_size"
             className="pg-select"
             value={state.company_size}
             onChange={(e) =>
@@ -215,8 +236,9 @@ export default function StepProfile({ onNext }: { onNext: () => void }) {
           </select>
         </Field>
 
-        <Field label="Years in this role">
+        <Field htmlFor="years_experience" label="Years in this role">
           <select
+            id="years_experience"
             className="pg-select"
             value={state.years_experience}
             onChange={(e) =>
@@ -235,8 +257,9 @@ export default function StepProfile({ onNext }: { onNext: () => void }) {
           </select>
         </Field>
 
-        <Field label="Company" optional>
+        <Field htmlFor="company_name" label="Company" optional>
           <input
+            id="company_name"
             className="pg-input"
             type="text"
             value={state.company_name}
@@ -244,8 +267,9 @@ export default function StepProfile({ onNext }: { onNext: () => void }) {
           />
         </Field>
 
-        <Field label="City or country" optional>
+        <Field htmlFor="location" label="City or country" optional>
           <input
+            id="location"
             className="pg-input"
             type="text"
             value={state.location}

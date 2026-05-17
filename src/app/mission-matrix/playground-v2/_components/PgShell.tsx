@@ -58,16 +58,7 @@ export function PgStepper({
           letterSpacing: -0.2,
         }}
       >
-        Mission Matrix{" "}
-        <span
-          style={{
-            color: "var(--ink-faint)",
-            fontWeight: 400,
-            marginLeft: 4,
-          }}
-        >
-          · playground
-        </span>
+        Mission Matrix
       </div>
       <div style={{ flex: 1 }} />
       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>

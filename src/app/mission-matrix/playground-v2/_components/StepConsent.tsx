@@ -272,37 +272,54 @@ export default function StepConsent({
   const [error, setError] = useState<string | null>(null);
 
   const hasEmail = !!(state.email || "").trim();
-  const consentReady = !!state.consent_research;
 
-  async function submit() {
+  /** Either button (Download / Continue) saves the assessment first so
+   *  there's a row in Airtable + a real assessmentId for the PDF endpoint.
+   *  We cache the id so a second click doesn't double-save. */
+  const [assessmentId, setAssessmentId] = useState<string | null>(null);
+
+  async function ensureSaved(): Promise<string | null> {
+    if (assessmentId) return assessmentId;
     setSubmitting(true);
     setError(null);
     try {
-      // consent_research must be true for the API to accept the save;
-      // we gate the button on the checkbox so this is always honored.
-      const payload: AssessmentState = state;
       const res = await fetch("/api/assessment", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
+        body: JSON.stringify(state),
       });
       if (!res.ok) {
         const body = (await res.json().catch(() => ({}))) as { error?: string };
         throw new Error(body.error || `Save failed (${res.status})`);
       }
-      const { assessmentId } = (await res.json()) as { assessmentId: string };
-      // Trigger the download in a new tab
-      window.open(`/api/assessment/${assessmentId}/pdf`, "_blank");
-      setSubmitted(true);
+      const { assessmentId: id } = (await res.json()) as {
+        assessmentId: string;
+      };
+      setAssessmentId(id);
+      return id;
     } catch (e) {
       setError(
         e instanceof Error
           ? e.message
           : "Couldn't save your matrix — try again in a moment.",
       );
+      return null;
     } finally {
       setSubmitting(false);
     }
+  }
+
+  async function handleDownload() {
+    const id = await ensureSaved();
+    if (!id) return;
+    window.open(`/api/assessment/${id}/pdf`, "_blank");
+    setSubmitted(true);
+  }
+
+  async function handleContinue() {
+    const id = await ensureSaved();
+    if (!id || !onContinue) return;
+    onContinue();
   }
 
   return (
@@ -326,25 +343,24 @@ export default function StepConsent({
               marginLeft: "auto",
             }}
           >
-            {submitted && onContinue ? (
-              <button className="pg-pill primary" onClick={onContinue}>
-                Continue to Part II →
-              </button>
-            ) : (
+            <button
+              className="pg-pill subtle"
+              onClick={handleDownload}
+              disabled={submitting}
+            >
+              {submitting
+                ? "Saving…"
+                : submitted
+                  ? "✓ Download PDF ↓"
+                  : "Download PDF ↓"}
+            </button>
+            {onContinue && (
               <button
                 className="pg-pill primary"
-                onClick={submit}
-                disabled={submitting || submitted || !consentReady}
+                onClick={handleContinue}
+                disabled={submitting}
               >
-                {submitted
-                  ? hasEmail
-                    ? "✓ Downloaded & sent to your inbox"
-                    : "✓ Downloaded"
-                  : submitting
-                    ? "Saving…"
-                    : hasEmail
-                      ? "Download & email me ↓"
-                      : "Download PDF ↓"}
+                Continue to Part II — Audition AI →
               </button>
             )}
           </div>
@@ -436,7 +452,7 @@ export default function StepConsent({
                       fontSize: 13,
                     }}
                   >
-                    (if you'd like a copy emailed too)
+                    (we&apos;ll share future insights)
                   </span>
                 </label>
                 <input
@@ -491,20 +507,16 @@ export default function StepConsent({
               }}
             >
               <span style={{ fontSize: 20 }}>🎉</span>
-              {hasEmail ? (
-                <>
-                  Your PDF is downloading
-                  {state.email ? (
-                    <>
-                      {" "}
-                      and a copy is on its way to <strong>{state.email}</strong>
-                    </>
-                  ) : null}
-                  .
-                </>
-              ) : (
-                <>Your PDF is downloading.</>
-              )}
+              <span>
+                Your PDF is downloading.
+                {hasEmail && state.email ? (
+                  <>
+                    {" "}
+                    We&apos;ll share future insights at{" "}
+                    <strong>{state.email}</strong>.
+                  </>
+                ) : null}
+              </span>
             </div>
           )}
         </div>

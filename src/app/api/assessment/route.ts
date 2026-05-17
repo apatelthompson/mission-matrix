@@ -15,12 +15,11 @@ export async function POST(req: Request) {
   if (!body || !Array.isArray(body.items)) {
     return NextResponse.json({ error: "Malformed payload" }, { status: 400 });
   }
-  if (!body.consent_research) {
-    return NextResponse.json(
-      { error: "Consent is required to submit." },
-      { status: 400 },
-    );
-  }
+  // consent_research is captured on the record but no longer gates the
+  // save — the act of clicking Download / Continue is implicit consent
+  // for the data needed to generate their PDF. The checkbox controls
+  // only whether their anonymized response is reused for framework
+  // refinement.
 
   try {
     const { assessmentId } = await saveAssessment(body);
