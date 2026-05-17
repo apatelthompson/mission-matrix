@@ -1,7 +1,5 @@
 "use client";
 
-import "../../mission-matrix.css";
-import "../../assessment/assessment.css";
 import "../playground.css";
 import { AssessmentProvider } from "../../assessment/_components/AssessmentContext";
 import {
@@ -11,10 +9,10 @@ import {
 } from "../page";
 
 /**
- * Deep-link to Part II — for people coming back to pick up where they
- * left off. Mounts the same wizard with the same storage key, but starts
- * at the first Part II step. If the user has no rated items in storage,
- * the wizard's own effect bounces them back to step 0.
+ * Deep-link entry into Part II — for return visitors. Mounts the same
+ * wizard with the same storage key, but starts at the first Part II
+ * step. If no rated items exist in storage, the wizard's hydration
+ * effect bounces back to Step 1.
  */
 export default function Page() {
   return (

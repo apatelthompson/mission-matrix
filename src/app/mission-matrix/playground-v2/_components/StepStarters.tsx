@@ -1,27 +1,143 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useAssessment } from "../../assessment/_components/AssessmentContext";
 import { findSeedRole } from "@/lib/mission-matrix-seeds";
 import type { AssessmentItem } from "@/lib/mission-matrix-types";
+import { PgFrame, PgBottom } from "./PgShell";
 
 const MIN_FILLED = 5;
 const MAX_ITEMS = 20;
 
 interface Row {
+  id: string;
   text: string;
   selected: boolean;
-  isSeed: boolean;
+  /** A "starter" came from the seed library and shouldn't be deletable;
+   *  custom rows the user added get a delete affordance. */
+  starter: boolean;
 }
 
-/**
- * Seed-driven brain dump. Uses state.function_area to pull starter tasks
- * from the seed library. If function is "other" or not in the library,
- * falls back to an empty brain dump that the user fills from scratch.
- *
- * The user can come back to this step later (via Add More on the plot)
- * with scores preserved.
- */
+function PgCheck({ checked }: { checked: boolean }) {
+  return (
+    <div
+      style={{
+        width: 20,
+        height: 20,
+        borderRadius: 6,
+        background: checked ? "var(--forest)" : "var(--paper-bright)",
+        border: `1.5px solid ${checked ? "var(--forest)" : "var(--rule)"}`,
+        display: "grid",
+        placeItems: "center",
+        transition: "all .15s ease",
+        flexShrink: 0,
+      }}
+    >
+      <svg
+        width="12"
+        height="12"
+        viewBox="0 0 14 14"
+        fill="none"
+        style={{
+          opacity: checked ? 1 : 0,
+          transition: "opacity .12s ease",
+        }}
+      >
+        <path
+          d="M3 7.5L5.8 10.2L11 4"
+          stroke="#fff"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      </svg>
+    </div>
+  );
+}
+
+function TaskRow({
+  text,
+  checked,
+  starter,
+  onToggle,
+  onDelete,
+}: {
+  text: string;
+  checked: boolean;
+  starter: boolean;
+  onToggle: () => void;
+  onDelete: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 12,
+        width: "100%",
+        textAlign: "left",
+        padding: "10px 14px",
+        background: checked ? "var(--forest-soft)" : "transparent",
+        border: `1px solid ${checked ? "#C7D3B5" : "transparent"}`,
+        borderRadius: 10,
+        cursor: "pointer",
+        fontFamily: "inherit",
+        transition: "background .15s ease, border-color .15s ease",
+      }}
+      onMouseEnter={(e) => {
+        if (!checked)
+          (e.currentTarget as HTMLButtonElement).style.background =
+            "var(--paper-soft)";
+      }}
+      onMouseLeave={(e) => {
+        if (!checked)
+          (e.currentTarget as HTMLButtonElement).style.background = "transparent";
+      }}
+    >
+      <PgCheck checked={checked} />
+      <span
+        style={{
+          fontSize: 15,
+          lineHeight: 1.3,
+          color: checked ? "var(--ink)" : "var(--ink-soft)",
+          fontWeight: checked ? 500 : 400,
+          flex: 1,
+          minWidth: 0,
+          whiteSpace: "nowrap",
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+        }}
+      >
+        {text}
+      </span>
+      {!starter && (
+        <span
+          onClick={(e) => {
+            e.stopPropagation();
+            onDelete();
+          }}
+          style={{
+            fontSize: 10,
+            fontWeight: 700,
+            letterSpacing: 0.4,
+            textTransform: "uppercase",
+            color: "var(--ink-faint)",
+            padding: "3px 8px",
+            borderRadius: 100,
+            border: "1px solid var(--line)",
+            cursor: "pointer",
+            flexShrink: 0,
+          }}
+        >
+          your own
+        </span>
+      )}
+    </button>
+  );
+}
+
 export default function StepStarters({
   onNext,
   onBack,
@@ -31,50 +147,50 @@ export default function StepStarters({
 }) {
   const { state, update } = useAssessment();
   const role = findSeedRole(state.function_area ?? "");
-  const hasSeeds = !!role;
 
   const [rows, setRows] = useState<Row[]>(() => {
     const existingTexts = new Set(
       state.items.filter((it) => it.text.trim()).map((it) => it.text.trim()),
     );
-
-    // If we have seeds, surface them all (default-selected when this is a
-    // fresh session; preserve user toggles when state.items already has
-    // selections from a prior visit).
     if (role) {
-      const seeded: Row[] = role.tasks.map((t) => ({
+      const seeded: Row[] = role.tasks.map((t, i) => ({
+        id: `s${i}`,
         text: t.text,
         selected: existingTexts.size === 0 ? true : existingTexts.has(t.text),
-        isSeed: true,
+        starter: true,
       }));
       const seedTexts = new Set(role.tasks.map((t) => t.text));
       const customs: Row[] = [];
+      let cIdx = 0;
       for (const it of state.items) {
         const t = it.text.trim();
         if (!t || seedTexts.has(t)) continue;
-        customs.push({ text: t, selected: true, isSeed: false });
+        customs.push({ id: `c${cIdx++}`, text: t, selected: true, starter: false });
       }
       return [...seeded, ...customs];
     }
-
-    // No seeds — fall back to empty brain-dump style. Start with 5 empty
-    // rows for the user to fill in themselves.
     if (existingTexts.size > 0) {
       return state.items
         .filter((it) => it.text.trim())
-        .map((it) => ({ text: it.text, selected: true, isSeed: false }));
+        .map((it, i) => ({
+          id: `c${i}`,
+          text: it.text,
+          selected: true,
+          starter: false,
+        }));
     }
-    return Array.from({ length: 5 }, () => ({
-      text: "",
-      selected: true,
-      isSeed: false,
-    }));
+    return [];
   });
 
-  const filled = rows.filter((r) => r.selected && r.text.trim()).length;
-  const ready = filled >= MIN_FILLED;
+  const [adding, setAdding] = useState(false);
+  const [draft, setDraft] = useState("");
+  const inputRef = useRef<HTMLInputElement>(null);
 
-  // Sync into shared state.items every change. Preserve scores by text match.
+  const selectedCount = rows.filter((r) => r.selected && r.text.trim()).length;
+  const ready = selectedCount >= MIN_FILLED;
+
+  // Sync into shared state.items every change. Preserve any prior scores
+  // by text match so going back from Rate doesn't lose ratings.
   useEffect(() => {
     const items: AssessmentItem[] = rows
       .filter((r) => r.selected && r.text.trim())
@@ -94,110 +210,141 @@ export default function StepStarters({
   }, [rows]);
 
   function toggle(i: number) {
-    setRows((rs) => rs.map((r, j) => (j === i ? { ...r, selected: !r.selected } : r)));
-  }
-  function editText(i: number, text: string) {
-    setRows((rs) => rs.map((r, j) => (j === i ? { ...r, text } : r)));
+    setRows((rs) =>
+      rs.map((r, j) => (j === i ? { ...r, selected: !r.selected } : r)),
+    );
   }
   function removeRow(i: number) {
     setRows((rs) => rs.filter((_, j) => j !== i));
   }
   function addCustom() {
-    if (rows.length >= MAX_ITEMS) return;
-    setRows((rs) => [...rs, { text: "", selected: true, isSeed: false }]);
+    const text = draft.trim();
+    if (!text) {
+      setAdding(false);
+      return;
+    }
+    if (rows.length >= MAX_ITEMS) {
+      setDraft("");
+      setAdding(false);
+      return;
+    }
+    setRows((rs) => [
+      ...rs,
+      { id: `c${Date.now()}`, text, selected: true, starter: false },
+    ]);
+    setDraft("");
+    setAdding(false);
   }
 
-  const counts = useMemo(() => {
-    const sel = rows.filter((r) => r.selected && r.text.trim()).length;
-    return { total: rows.length, sel };
-  }, [rows]);
-
   return (
-    <>
-      <main className="mm-assess-main">
-        <div className="mm-assess-eyebrow">
-          Step A · Brain dump{role ? ` · ${role.label}` : ""}
-        </div>
-        <h1 className="mm-assess-title">What&apos;s on your plate?</h1>
-        <p className="mm-assess-sub">
-          {hasSeeds
-            ? "We pulled starter tasks for your function — they're a thought-starter, not the answer. Uncheck what doesn't apply, edit wording to fit your life, add anything missing. Start with at least 5 — you'll have a chance to come back and add more after you see your map."
-            : "List the work you actually spend time on in a typical week or month — projects, meetings, recurring tasks, the things that keep showing up. Start with at least 5 — you'll have a chance to come back and add more after you see your map."}
-        </p>
+    <PgFrame
+      title="What's on your plate?"
+      bottom={
+        <PgBottom
+          onBack={onBack}
+          onContinue={ready ? onNext : undefined}
+          continueDisabled={!ready}
+          continueLabel="Score these →"
+          hint={!ready ? `${selectedCount} of ${MIN_FILLED} minimum` : null}
+        />
+      }
+    >
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          gap: 2,
+          flex: 1,
+          minHeight: 0,
+          overflowY: "auto",
+          overflowX: "hidden",
+          paddingRight: 8,
+          marginRight: -8,
+        }}
+      >
+        {rows.map((r, i) => (
+          <TaskRow
+            key={r.id}
+            text={r.text}
+            checked={r.selected}
+            starter={r.starter}
+            onToggle={() => toggle(i)}
+            onDelete={() => removeRow(i)}
+          />
+        ))}
 
-        <div className="pg-starters-list">
-          {rows.map((r, i) => (
-            <div
-              key={i}
-              className={"pg-starter-row" + (r.selected ? " selected" : "")}
-            >
-              <label className="pg-starter-check">
-                <input
-                  type="checkbox"
-                  checked={r.selected}
-                  onChange={() => toggle(i)}
-                />
-              </label>
+        <div style={{ paddingTop: 6 }}>
+          {adding ? (
+            <div style={{ display: "flex", gap: 8, alignItems: "stretch" }}>
               <input
-                className="mm-input pg-starter-text"
-                type="text"
-                value={r.text}
-                placeholder={
-                  r.isSeed
-                    ? ""
-                    : i === 0
-                      ? "e.g. Weekly 1:1s with team"
-                      : i === 1
-                        ? "e.g. Q2 board prep"
-                        : "Add your own…"
-                }
-                onChange={(e) => editText(i, e.target.value)}
+                ref={inputRef}
+                autoFocus
+                className="pg-input"
+                placeholder="e.g. Drafting our next product narrative…"
+                value={draft}
+                onChange={(e) => setDraft(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") addCustom();
+                  if (e.key === "Escape") {
+                    setAdding(false);
+                    setDraft("");
+                  }
+                }}
+                style={{ flex: 1 }}
               />
-              {!r.isSeed && (
-                <button
-                  type="button"
-                  className="mm-item-row-remove"
-                  aria-label="Remove"
-                  onClick={() => removeRow(i)}
-                  title="Remove this row"
-                >
-                  ×
-                </button>
-              )}
+              <button
+                className="pg-pill primary"
+                onClick={addCustom}
+                style={{ padding: "0 18px" }}
+              >
+                Add
+              </button>
+              <button
+                className="pg-pill subtle"
+                onClick={() => {
+                  setAdding(false);
+                  setDraft("");
+                }}
+                style={{ padding: "0 14px" }}
+              >
+                Cancel
+              </button>
             </div>
-          ))}
+          ) : (
+            <button
+              type="button"
+              onClick={() => setAdding(true)}
+              disabled={rows.length >= MAX_ITEMS}
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 8,
+                padding: "8px 12px",
+                background: "transparent",
+                border: "none",
+                color: "var(--ink-muted)",
+                cursor: rows.length >= MAX_ITEMS ? "not-allowed" : "pointer",
+                opacity: rows.length >= MAX_ITEMS ? 0.5 : 1,
+                fontFamily: "inherit",
+                fontSize: 14,
+                fontWeight: 600,
+                transition: "color .15s ease",
+              }}
+              onMouseEnter={(e) => {
+                if (rows.length < MAX_ITEMS)
+                  (e.currentTarget as HTMLButtonElement).style.color =
+                    "var(--forest)";
+              }}
+              onMouseLeave={(e) => {
+                (e.currentTarget as HTMLButtonElement).style.color =
+                  "var(--ink-muted)";
+              }}
+            >
+              + Add your own
+            </button>
+          )}
         </div>
-
-        <button
-          type="button"
-          className="mm-add-row"
-          onClick={addCustom}
-          disabled={rows.length >= MAX_ITEMS}
-        >
-          {rows.length >= MAX_ITEMS
-            ? "That's plenty — pick the most important ones"
-            : "+ Add your own"}
-        </button>
-
-        <p className="mm-field-hint" style={{ marginTop: 16 }}>
-          {counts.sel < MIN_FILLED
-            ? `Pick at least ${MIN_FILLED - counts.sel} more to continue`
-            : `${counts.sel} selected · ready to rate`}
-        </p>
-      </main>
-
-      <div className="mm-assess-actions">
-        <button className="mm-btn mm-btn-ghost" onClick={onBack}>
-          ← Back
-        </button>
-        <button
-          className="mm-btn mm-btn-primary"
-          onClick={onNext}
-          disabled={!ready}
-        >
-          Continue →
-        </button>
       </div>
-    </>
+    </PgFrame>
   );
 }
