@@ -359,7 +359,9 @@ export default function StepConsent({
                 onClick={handleContinue}
                 disabled={submitting}
               >
-                Continue to Part II — Audition AI →
+                {state.tier === "extended"
+                  ? "Continue to Part II — Audition AI →"
+                  : "Continue →"}
               </button>
             )}
           </div>

@@ -134,6 +134,20 @@ export interface AssessmentState {
   career_stage?: CareerStage | "";
   function_area?: FunctionAreaId | "";
   team_size_managed?: TeamSize | "";
+  /**
+   * Which experience the user picked on Step 1.
+   *   "base"     — open to the web; ends after Part I download +
+   *                Archetype Reference screen.
+   *   "extended" — paid-engagement flow; unlocks Step 7 (Tool Types)
+   *                and Step 8 (Audition + Part II PDF). Gated by a
+   *                server-validated invite code.
+   * Defaults to "base" when absent — the public should never feel a
+   * gate they didn't ask for.
+   */
+  tier?: "base" | "extended";
+  /** Verbatim code the user typed; persisted so we can track which
+   *  engagement/org a response came from. Validation is server-side. */
+  invite_code?: string;
   /** Set after a successful POST to /api/assessment. Subsequent saves
    *  PATCH this row instead of creating a new one. Persists across
    *  reloads via localStorage. */

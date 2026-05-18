@@ -14,6 +14,7 @@ import type {
   Quadrant,
 } from "./mission-matrix-types";
 import { quadrantFor } from "./mission-matrix-types";
+import { ARCHETYPES } from "./mission-matrix-archetypes";
 
 /**
  * Two separate PDF entrypoints — one per "Part" of the wizard — so a
@@ -62,6 +63,13 @@ const COLORS = {
   qRoutineInk: rgb(0.420, 0.227, 0.063), // #6B3A10
 };
 
+/**
+ * PDF-only metadata per quadrant. The textual copy
+ * (name / subtitle / archetype / description) lives in
+ * mission-matrix-archetypes.ts so it stays in sync with the audition
+ * screen + the base-tier Reference page. Visual styling (the pdf-lib
+ * RGB values) stays here.
+ */
 const Q_META: Record<
   Quadrant,
   {
@@ -74,38 +82,34 @@ const Q_META: Record<
   }
 > = {
   craft: {
-    name: "Your core craft",
-    subtitle: "High meaning · High unique expertise",
-    archetype: "Forcefield agent",
-    archetypeDesc:
-      "A persistent agent that quietly handles noise around your work — so you show up present, in lead, bringing the expertise only you can bring.",
+    name: ARCHETYPES.craft.quadrantName,
+    subtitle: ARCHETYPES.craft.subtitle,
+    archetype: ARCHETYPES.craft.archetype,
+    archetypeDesc: ARCHETYPES.craft.archetypeDesc,
     bg: COLORS.qCraftBg,
     ink: COLORS.qCraftInk,
   },
   growth: {
-    name: "Your growth edge",
-    subtitle: "High meaning · Low unique expertise",
-    archetype: "Chat with strong memory",
-    archetypeDesc:
-      "You bring the why; the AI brings the how. Use it to learn out loud and accelerate where you're still building.",
+    name: ARCHETYPES.growth.quadrantName,
+    subtitle: ARCHETYPES.growth.subtitle,
+    archetype: ARCHETYPES.growth.archetype,
+    archetypeDesc: ARCHETYPES.growth.archetypeDesc,
     bg: COLORS.qEdgeBg,
     ink: COLORS.qEdgeInk,
   },
   drain: {
-    name: "Skilled but draining",
-    subtitle: "Low meaning · High unique expertise",
-    archetype: "Skills / templates",
-    archetypeDesc:
-      "Package the context you've built into something reusable — so the work runs without your full attention each time.",
+    name: ARCHETYPES.drain.quadrantName,
+    subtitle: ARCHETYPES.drain.subtitle,
+    archetype: ARCHETYPES.drain.archetype,
+    archetypeDesc: ARCHETYPES.drain.archetypeDesc,
     bg: COLORS.qSkillBg,
     ink: COLORS.qSkillInk,
   },
   routine: {
-    name: "Routine tasks",
-    subtitle: "Low meaning · Low unique expertise",
-    archetype: "Automate — or eliminate",
-    archetypeDesc:
-      "Fire and forget. Or — equally valid — stop doing it at all. Don't spend your scarce attention here.",
+    name: ARCHETYPES.routine.quadrantName,
+    subtitle: ARCHETYPES.routine.subtitle,
+    archetype: ARCHETYPES.routine.archetype,
+    archetypeDesc: ARCHETYPES.routine.archetypeDesc,
     bg: COLORS.qRoutineBg,
     ink: COLORS.qRoutineInk,
   },

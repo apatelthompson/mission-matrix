@@ -15,6 +15,7 @@ import StepReflect from "./_components/StepReflect";
 import StepConsent from "./_components/StepConsent";
 import StepToolTypes from "./_components/StepToolTypes";
 import StepAudition from "./_components/StepAudition";
+import StepArchetypeReference from "./_components/StepArchetypeReference";
 
 const PLAYGROUND_V2_STORAGE_KEY = "mm-playground-v2";
 
@@ -94,8 +95,16 @@ function Wizard({ initialStep = 1 }: { initialStep?: number }) {
         )}
         {step === 5 && <StepReflect onNext={next} onBack={back} />}
         {step === 6 && <StepConsent onBack={back} onContinue={next} />}
-        {step === 7 && <StepToolTypes onNext={next} onBack={back} />}
-        {step === 8 && (
+        {/* Step 7 branches on tier — base users see the archetype
+            reference and the flow ends; extended users continue into
+            Part II (Tool Types + Audition). */}
+        {step === 7 && state.tier !== "extended" && (
+          <StepArchetypeReference onBack={back} onRestart={restart} />
+        )}
+        {step === 7 && state.tier === "extended" && (
+          <StepToolTypes onNext={next} onBack={back} />
+        )}
+        {step === 8 && state.tier === "extended" && (
           <StepAudition onBack={back} onRestart={restart} />
         )}
       </div>

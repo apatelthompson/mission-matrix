@@ -8,6 +8,7 @@ import {
   type AssessmentState,
   type Quadrant,
 } from "@/lib/mission-matrix-types";
+import { ARCHETYPES as ARCHETYPE_COPY } from "@/lib/mission-matrix-archetypes";
 import { PgFrame } from "./PgShell";
 
 /**
@@ -59,22 +60,29 @@ const Q_META: Record<Quadrant, QuadrantMeta> = {
   },
 };
 
+/**
+ * Local view-model derived from the canonical copy in
+ * mission-matrix-archetypes.ts. ArchetypeMeta uses {label, desc}; the
+ * shared module uses {archetype, archetypeDesc} — we adapt here so the
+ * audition UI keeps its existing prop shape while the wording stays
+ * in one place.
+ */
 const ARCHETYPES: Record<Quadrant, ArchetypeMeta> = {
   craft: {
-    label: "Forcefield agent",
-    desc: "A persistent agent that quietly handles noise around your work — so you show up present, in lead, bringing the expertise only you can bring.",
+    label: ARCHETYPE_COPY.craft.archetype,
+    desc: ARCHETYPE_COPY.craft.archetypeDesc,
   },
   growth: {
-    label: "Chat with strong memory",
-    desc: "You bring the why; the AI brings the how.",
+    label: ARCHETYPE_COPY.growth.archetype,
+    desc: ARCHETYPE_COPY.growth.archetypeDesc,
   },
   drain: {
-    label: "Skills / templates",
-    desc: "Package the context you've built into something reusable.",
+    label: ARCHETYPE_COPY.drain.archetype,
+    desc: ARCHETYPE_COPY.drain.archetypeDesc,
   },
   routine: {
-    label: "Automate — or eliminate",
-    desc: "Fire and forget. Or — equally valid — stop doing it at all.",
+    label: ARCHETYPE_COPY.routine.archetype,
+    desc: ARCHETYPE_COPY.routine.archetypeDesc,
   },
 };
 

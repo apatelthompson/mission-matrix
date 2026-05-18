@@ -44,6 +44,8 @@ export async function saveAssessment(state: AssessmentState) {
   if (state.brainstorm_growth) v2Fields.brainstorm_growth = state.brainstorm_growth;
   if (state.brainstorm_routine) v2Fields.brainstorm_routine = state.brainstorm_routine;
   if (state.brainstorm_drain) v2Fields.brainstorm_drain = state.brainstorm_drain;
+  if (state.tier) v2Fields.tier = state.tier;
+  if (state.invite_code) v2Fields.invite_code = state.invite_code;
 
   const createdAssessment = await assessmentsTable.create([
     {
@@ -138,6 +140,8 @@ export async function updateAssessment(
   if (state.brainstorm_routine)
     v2Fields.brainstorm_routine = state.brainstorm_routine;
   if (state.brainstorm_drain) v2Fields.brainstorm_drain = state.brainstorm_drain;
+  if (state.tier) v2Fields.tier = state.tier;
+  if (state.invite_code) v2Fields.invite_code = state.invite_code;
 
   await assessmentsTable.update([
     {
@@ -262,6 +266,10 @@ export async function loadAssessment(
     brainstorm_growth: String(fields.brainstorm_growth ?? ""),
     brainstorm_routine: String(fields.brainstorm_routine ?? ""),
     brainstorm_drain: String(fields.brainstorm_drain ?? ""),
+    tier: (fields.tier as "base" | "extended" | undefined) ?? undefined,
+    invite_code: fields.invite_code
+      ? String(fields.invite_code)
+      : undefined,
     started_at: Date.now(),
   };
 }
