@@ -254,7 +254,7 @@ export default function StepProfile({
                   : "var(--ink-muted)",
             }}
           >
-            Base — free
+            Base
           </button>
           <button
             type="button"
@@ -279,7 +279,7 @@ export default function StepProfile({
                   : "var(--ink-muted)",
             }}
           >
-            Extended — paid engagement
+            Extended
           </button>
         </div>
         {tier === "extended" && (

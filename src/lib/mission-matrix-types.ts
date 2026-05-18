@@ -138,9 +138,8 @@ export interface AssessmentState {
    * Which experience the user picked on Step 1.
    *   "base"     — open to the web; ends after Part I download +
    *                Archetype Reference screen.
-   *   "extended" — paid-engagement flow; unlocks Step 7 (Tool Types)
-   *                and Step 8 (Audition + Part II PDF). Gated by a
-   *                server-validated invite code.
+   *   "extended" — invite-code-gated flow; unlocks the AI interview at
+   *                Step 2 and the audition + Part II PDF at Step 7/8.
    * Defaults to "base" when absent — the public should never feel a
    * gate they didn't ask for.
    */
