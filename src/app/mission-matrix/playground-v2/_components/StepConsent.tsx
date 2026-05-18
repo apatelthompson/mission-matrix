@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useAssessment } from "../../assessment/_components/AssessmentContext";
 import {
   quadrantFor,
@@ -273,40 +273,70 @@ export default function StepConsent({
 
   const hasEmail = !!(state.email || "").trim();
 
-  /** Either button (Download / Continue) saves the assessment first so
-   *  there's a row in Airtable + a real assessmentId for the PDF endpoint.
-   *  We cache the id so a second click doesn't double-save. */
-  const [assessmentId, setAssessmentId] = useState<string | null>(null);
+  /**
+   * Dedupes saves across:
+   *  1. concurrent clicks (Download + Continue clicked in quick succession
+   *     would otherwise both fire ensureSaved before the first POST returns,
+   *     each creating its own row) — guarded by `inFlightRef`
+   *  2. component re-mount inside the same session (navigating away and
+   *     coming back used to reset the local cache and trigger a fresh save)
+   *     — guarded by sessionStorage
+   *
+   * The cache is intentionally session-scoped: a brand-new tab/session
+   * starts fresh, but the same browsing session reuses the row even after
+   * unmount/remount.
+   */
+  const CACHE_KEY = "mm-saved-id-pt1";
+  const inFlightRef = useRef<Promise<string | null> | null>(null);
+  const [assessmentId, setAssessmentId] = useState<string | null>(() => {
+    if (typeof window === "undefined") return null;
+    return sessionStorage.getItem(CACHE_KEY);
+  });
 
   async function ensureSaved(): Promise<string | null> {
     if (assessmentId) return assessmentId;
-    setSubmitting(true);
-    setError(null);
-    try {
-      const res = await fetch("/api/assessment", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(state),
-      });
-      if (!res.ok) {
-        const body = (await res.json().catch(() => ({}))) as { error?: string };
-        throw new Error(body.error || `Save failed (${res.status})`);
+    if (inFlightRef.current) return inFlightRef.current;
+
+    const promise: Promise<string | null> = (async () => {
+      setSubmitting(true);
+      setError(null);
+      try {
+        const res = await fetch("/api/assessment", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(state),
+        });
+        if (!res.ok) {
+          const body = (await res.json().catch(() => ({}))) as {
+            error?: string;
+          };
+          throw new Error(body.error || `Save failed (${res.status})`);
+        }
+        const { assessmentId: id } = (await res.json()) as {
+          assessmentId: string;
+        };
+        setAssessmentId(id);
+        try {
+          sessionStorage.setItem(CACHE_KEY, id);
+        } catch {
+          // sessionStorage can throw in some private-mode situations; the
+          // in-memory cache still works within this mount
+        }
+        return id;
+      } catch (e) {
+        setError(
+          e instanceof Error
+            ? e.message
+            : "Couldn't save your matrix — try again in a moment.",
+        );
+        return null;
+      } finally {
+        setSubmitting(false);
+        inFlightRef.current = null;
       }
-      const { assessmentId: id } = (await res.json()) as {
-        assessmentId: string;
-      };
-      setAssessmentId(id);
-      return id;
-    } catch (e) {
-      setError(
-        e instanceof Error
-          ? e.message
-          : "Couldn't save your matrix — try again in a moment.",
-      );
-      return null;
-    } finally {
-      setSubmitting(false);
-    }
+    })();
+    inFlightRef.current = promise;
+    return promise;
   }
 
   async function handleDownload() {

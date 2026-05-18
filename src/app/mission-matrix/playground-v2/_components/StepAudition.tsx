@@ -439,17 +439,37 @@ export default function StepAudition({
   const [error, setError] = useState<string | null>(null);
 
   // Download-full-assessment state (separate from per-quadrant suggest
-  // loading). Caches the assessmentId so re-clicking doesn't double-save.
+  // loading). Saves are deduped across both concurrent clicks (in-flight
+  // promise) AND component re-mounts within the session (sessionStorage).
   const [downloading, setDownloading] = useState(false);
   const [downloadError, setDownloadError] = useState<string | null>(null);
-  const savedIdRef = useRef<string | null>(null);
+  const CACHE_KEY = "mm-saved-id-full";
+  const inFlightRef = useRef<Promise<string | null> | null>(null);
+  const [savedId, setSavedId] = useState<string | null>(() => {
+    if (typeof window === "undefined") return null;
+    return sessionStorage.getItem(CACHE_KEY);
+  });
 
   async function downloadFullAssessment() {
+    if (downloading) return;
+
+    // Cache hit — reuse the existing Airtable row's id, no new save.
+    if (savedId) {
+      window.open(`/api/assessment/${savedId}/pdf`, "_blank");
+      return;
+    }
+
+    // De-dupe concurrent clicks (e.g. double-click on the button).
+    if (inFlightRef.current) {
+      const id = await inFlightRef.current;
+      if (id) window.open(`/api/assessment/${id}/pdf`, "_blank");
+      return;
+    }
+
     setDownloading(true);
     setDownloadError(null);
-    try {
-      let id = savedIdRef.current;
-      if (!id) {
+    const promise: Promise<string | null> = (async () => {
+      try {
         // The act of clicking Download is implicit consent for the save.
         const payload: AssessmentState = {
           ...state,
@@ -467,19 +487,29 @@ export default function StepAudition({
           throw new Error(body.error || `Save failed (${res.status})`);
         }
         const data = (await res.json()) as { assessmentId: string };
-        id = data.assessmentId;
-        savedIdRef.current = id;
+        setSavedId(data.assessmentId);
+        try {
+          sessionStorage.setItem(CACHE_KEY, data.assessmentId);
+        } catch {
+          // sessionStorage can throw in private-mode situations; in-memory
+          // cache still works within this mount
+        }
+        return data.assessmentId;
+      } catch (e) {
+        setDownloadError(
+          e instanceof Error
+            ? e.message
+            : "Couldn't generate your PDF — try again in a moment.",
+        );
+        return null;
+      } finally {
+        setDownloading(false);
+        inFlightRef.current = null;
       }
-      window.open(`/api/assessment/${id}/pdf`, "_blank");
-    } catch (e) {
-      setDownloadError(
-        e instanceof Error
-          ? e.message
-          : "Couldn't generate your PDF — try again in a moment.",
-      );
-    } finally {
-      setDownloading(false);
-    }
+    })();
+    inFlightRef.current = promise;
+    const id = await promise;
+    if (id) window.open(`/api/assessment/${id}/pdf`, "_blank");
   }
 
   const byQuadrant = useMemo(() => {
@@ -614,7 +644,7 @@ export default function StepAudition({
             >
               {downloading
                 ? "Generating…"
-                : savedIdRef.current
+                : savedId
                   ? "✓ Download again"
                   : "Download full assessment"}
             </button>
