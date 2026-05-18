@@ -26,7 +26,7 @@ const PART_II_START_STEP = 7;
 
 function Wizard({ initialStep = 1 }: { initialStep?: number }) {
   const [step, setStep] = useState(initialStep);
-  const { state, hydrated, reset } = useAssessment();
+  const { state, hydrated, reset, saveProgress } = useAssessment();
 
   // /audition deep-link bounces to step 1 if no rated items exist.
   useEffect(() => {
@@ -40,34 +40,33 @@ function Wizard({ initialStep = 1 }: { initialStep?: number }) {
   const next = () => {
     setStep((s) => s + 1);
     if (typeof window !== "undefined") window.scrollTo({ top: 0 });
+    // Option B autosave: capture progress on every forward step so we
+    // have the user's data even if they drop off before Download. Fire
+    // and forget — saveProgress dedupes concurrent calls internally.
+    void saveProgress();
   };
   const back = () => {
     setStep((s) => Math.max(1, s - 1));
     if (typeof window !== "undefined") window.scrollTo({ top: 0 });
+    void saveProgress();
   };
   const goToStarters = () => {
     setStep(2);
     if (typeof window !== "undefined") window.scrollTo({ top: 0 });
+    void saveProgress();
   };
   const restart = () => {
+    // AssessmentContext.reset() also clears saved_assessment_id +
+    // saveProgress's in-memory refs — so the next saveProgress() call
+    // POSTs a brand-new row instead of PATCHing the previous one.
     reset();
-    // Also wipe the per-session save caches so a fresh run gets a new
-    // Airtable row instead of trying to reuse a stale assessmentId from
-    // a previous test session.
-    if (typeof window !== "undefined") {
-      try {
-        sessionStorage.removeItem("mm-saved-id-pt1");
-        sessionStorage.removeItem("mm-saved-id-full");
-      } catch {
-        // sessionStorage can throw in some private-mode situations — fine
-      }
-    }
     setStep(1);
     if (typeof window !== "undefined") window.scrollTo({ top: 0 });
   };
   const jump = (n: number) => {
     setStep(n);
     if (typeof window !== "undefined") window.scrollTo({ top: 0 });
+    void saveProgress();
   };
 
   return (

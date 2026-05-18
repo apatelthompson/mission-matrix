@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useMemo, useState } from "react";
 import { useAssessment } from "../../assessment/_components/AssessmentContext";
 import {
   FUNCTION_AREAS,
@@ -464,7 +464,7 @@ export default function StepAudition({
   onBack: () => void;
   onRestart: () => void;
 }) {
-  const { state, update } = useAssessment();
+  const { state, update, saveProgress } = useAssessment();
   const [active, setActive] = useState<Quadrant>(() => {
     const counts = countByQuadrant(state.items);
     // Default to the first non-empty quadrant in canonical order; fall
@@ -476,76 +476,33 @@ export default function StepAudition({
   const [error, setError] = useState<string | null>(null);
 
   // Download-full-assessment state (separate from per-quadrant suggest
-  // loading). Saves are deduped across both concurrent clicks (in-flight
-  // promise) AND component re-mounts within the session (sessionStorage).
+  // loading). Under Option B the same Airtable row gets PATCHed every
+  // step — by the time we reach Step 8 the row exists and includes
+  // every brainstorm field. saveProgress() handles POST-vs-PATCH and
+  // concurrent-click dedupe internally.
   const [downloading, setDownloading] = useState(false);
+  const [downloaded, setDownloaded] = useState(false);
   const [downloadError, setDownloadError] = useState<string | null>(null);
-  const CACHE_KEY = "mm-saved-id-full";
-  const inFlightRef = useRef<Promise<string | null> | null>(null);
-  const [savedId, setSavedId] = useState<string | null>(() => {
-    if (typeof window === "undefined") return null;
-    return sessionStorage.getItem(CACHE_KEY);
-  });
 
   async function downloadFullAssessment() {
     if (downloading) return;
-
-    // De-dupe concurrent clicks (e.g. double-click on the button).
-    if (inFlightRef.current) {
-      const id = await inFlightRef.current;
-      if (id) window.open(`/api/assessment/${id}/pdf`, "_blank");
-      return;
-    }
-
-    // Always save fresh — by the time the user reaches Step 8, the
-    // state has materially changed (they've added Part II brainstorm
-    // notes). Reusing a cached id would open a stale PDF without those
-    // notes. We accept that this can create a 2nd Airtable row when the
-    // user also downloaded from Step 6.
     setDownloading(true);
     setDownloadError(null);
-    const promise: Promise<string | null> = (async () => {
-      try {
-        // The act of clicking Download is implicit consent for the save.
-        const payload: AssessmentState = {
-          ...state,
-          consent_research: state.consent_research || true,
-        };
-        const res = await fetch("/api/assessment", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
-        });
-        if (!res.ok) {
-          const body = (await res.json().catch(() => ({}))) as {
-            error?: string;
-          };
-          throw new Error(body.error || `Save failed (${res.status})`);
-        }
-        const data = (await res.json()) as { assessmentId: string };
-        setSavedId(data.assessmentId);
-        try {
-          sessionStorage.setItem(CACHE_KEY, data.assessmentId);
-        } catch {
-          // sessionStorage can throw in private-mode situations; in-memory
-          // cache still works within this mount
-        }
-        return data.assessmentId;
-      } catch (e) {
-        setDownloadError(
-          e instanceof Error
-            ? e.message
-            : "Couldn't generate your PDF — try again in a moment.",
-        );
-        return null;
-      } finally {
-        setDownloading(false);
-        inFlightRef.current = null;
-      }
-    })();
-    inFlightRef.current = promise;
-    const id = await promise;
-    if (id) window.open(`/api/assessment/${id}/pdf`, "_blank");
+    try {
+      const id = await saveProgress();
+      if (!id)
+        throw new Error("Couldn't generate your PDF — try again in a moment.");
+      window.open(`/api/assessment/${id}/pdf`, "_blank");
+      setDownloaded(true);
+    } catch (e) {
+      setDownloadError(
+        e instanceof Error
+          ? e.message
+          : "Couldn't generate your PDF — try again in a moment.",
+      );
+    } finally {
+      setDownloading(false);
+    }
   }
 
   const byQuadrant = useMemo(() => {
@@ -681,7 +638,7 @@ export default function StepAudition({
             >
               {downloading
                 ? "Generating…"
-                : savedId
+                : downloaded
                   ? "✓ Download again"
                   : "Download full assessment"}
             </button>

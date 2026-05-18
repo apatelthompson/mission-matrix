@@ -197,6 +197,11 @@ function wrapText(
   maxWidth: number,
 ): string[] {
   if (!text) return [];
+  // Sanitize internally — some callers (drawAudition's per-item wrap,
+  // for instance) bypass drawText and would otherwise pass raw user
+  // input straight to font.widthOfTextAtSize, which uses the font's
+  // encoder and throws on non-WinAnsi characters like "→".
+  text = sanitize(text);
   const lines: string[] = [];
   for (const para of text.split(/\r?\n/)) {
     const words = para.split(/\s+/);

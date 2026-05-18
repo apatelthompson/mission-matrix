@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useMemo, useState } from "react";
 import { useAssessment } from "../../assessment/_components/AssessmentContext";
 import {
   quadrantFor,
@@ -266,7 +266,7 @@ export default function StepConsent({
    *  without having to dig out the /audition URL. */
   onContinue?: () => void;
 }) {
-  const { state, update } = useAssessment();
+  const { state, update, saveProgress } = useAssessment();
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -274,82 +274,51 @@ export default function StepConsent({
   const hasEmail = !!(state.email || "").trim();
 
   /**
-   * Dedupes saves across:
-   *  1. concurrent clicks (Download + Continue clicked in quick succession
-   *     would otherwise both fire ensureSaved before the first POST returns,
-   *     each creating its own row) — guarded by `inFlightRef`
-   *  2. component re-mount inside the same session (navigating away and
-   *     coming back used to reset the local cache and trigger a fresh save)
-   *     — guarded by sessionStorage
-   *
-   * The cache is intentionally session-scoped: a brand-new tab/session
-   * starts fresh, but the same browsing session reuses the row even after
-   * unmount/remount.
+   * Save logic now lives in AssessmentContext.saveProgress():
+   *  - first call POSTs and stores the assessment id on state
+   *  - subsequent calls PATCH the same row in place
+   *  - concurrent calls dedupe via an in-flight Promise ref
+   * Under Option B, autosave already runs on every step navigation, so
+   * by the time the user reaches this step there's usually already a
+   * saved row — handleDownload just patches with the latest values
+   * (which now include name/email/consent) and opens the PDF.
    */
-  const CACHE_KEY = "mm-saved-id-pt1";
-  const inFlightRef = useRef<Promise<string | null> | null>(null);
-  const [assessmentId, setAssessmentId] = useState<string | null>(() => {
-    if (typeof window === "undefined") return null;
-    return sessionStorage.getItem(CACHE_KEY);
-  });
-
-  async function ensureSaved(): Promise<string | null> {
-    if (assessmentId) return assessmentId;
-    if (inFlightRef.current) return inFlightRef.current;
-
-    const promise: Promise<string | null> = (async () => {
-      setSubmitting(true);
-      setError(null);
-      try {
-        const res = await fetch("/api/assessment", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(state),
-        });
-        if (!res.ok) {
-          const body = (await res.json().catch(() => ({}))) as {
-            error?: string;
-          };
-          throw new Error(body.error || `Save failed (${res.status})`);
-        }
-        const { assessmentId: id } = (await res.json()) as {
-          assessmentId: string;
-        };
-        setAssessmentId(id);
-        try {
-          sessionStorage.setItem(CACHE_KEY, id);
-        } catch {
-          // sessionStorage can throw in some private-mode situations; the
-          // in-memory cache still works within this mount
-        }
-        return id;
-      } catch (e) {
-        setError(
-          e instanceof Error
-            ? e.message
-            : "Couldn't save your matrix — try again in a moment.",
-        );
-        return null;
-      } finally {
-        setSubmitting(false);
-        inFlightRef.current = null;
-      }
-    })();
-    inFlightRef.current = promise;
-    return promise;
-  }
-
   async function handleDownload() {
-    const id = await ensureSaved();
-    if (!id) return;
-    window.open(`/api/assessment/${id}/pdf`, "_blank");
-    setSubmitted(true);
+    setSubmitting(true);
+    setError(null);
+    try {
+      const id = await saveProgress();
+      if (!id) throw new Error("Couldn't save your matrix — try again in a moment.");
+      window.open(`/api/assessment/${id}/pdf`, "_blank");
+      setSubmitted(true);
+    } catch (e) {
+      setError(
+        e instanceof Error
+          ? e.message
+          : "Couldn't save your matrix — try again in a moment.",
+      );
+    } finally {
+      setSubmitting(false);
+    }
   }
 
   async function handleContinue() {
-    const id = await ensureSaved();
-    if (!id || !onContinue) return;
-    onContinue();
+    if (!onContinue) return;
+    setSubmitting(true);
+    setError(null);
+    try {
+      const id = await saveProgress();
+      if (!id) throw new Error("Couldn't save your matrix — try again in a moment.");
+      onContinue();
+    } catch (e) {
+      setError(
+        e instanceof Error
+          ? e.message
+          : "Couldn't save your matrix — try again in a moment.",
+      );
+    } finally {
+      setSubmitting(false);
+    }
   }
 
   return (
@@ -502,7 +471,7 @@ export default function StepConsent({
               checked={!!state.consent_research}
               onChange={(v) => update({ consent_research: v })}
               title="Help us refine the framework"
-              body="Use my anonymized responses to improve the Mission Matrix. Never shared publicly or with your name attached."
+              body="Your responses are saved either way so we can generate your PDF. Check this if you're OK with us using them anonymously — never with your name attached — to make the Mission Matrix better for future users."
             />
           </div>
 

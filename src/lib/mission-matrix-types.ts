@@ -134,6 +134,10 @@ export interface AssessmentState {
   career_stage?: CareerStage | "";
   function_area?: FunctionAreaId | "";
   team_size_managed?: TeamSize | "";
+  /** Set after a successful POST to /api/assessment. Subsequent saves
+   *  PATCH this row instead of creating a new one. Persists across
+   *  reloads via localStorage. */
+  saved_assessment_id?: string;
   // Part II / Audition (playground-v2)
   brainstorm_craft?: string;
   brainstorm_growth?: string;
