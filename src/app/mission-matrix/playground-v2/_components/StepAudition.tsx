@@ -492,7 +492,28 @@ export default function StepAudition({
       const id = await saveProgress();
       if (!id)
         throw new Error("Couldn't generate your PDF — try again in a moment.");
-      window.open(`/api/assessment/${id}/pdf`, "_blank");
+      // Part 2 PDF — needs the AI suggestions, which only live in
+      // client state (not Airtable). POST them inline.
+      const res = await fetch(`/api/assessment/${id}/pdf`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          suggestions: state.suggestions_by_item ?? {},
+        }),
+      });
+      if (!res.ok) {
+        const body = (await res.json().catch(() => ({}))) as {
+          error?: string;
+        };
+        throw new Error(body.error || `PDF failed (${res.status})`);
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      window.open(url, "_blank");
+      // Revoke the object URL after the new tab has had time to fetch
+      // it. 60s is conservative; the browser caches the bytes once the
+      // tab has them.
+      setTimeout(() => URL.revokeObjectURL(url), 60000);
       setDownloaded(true);
     } catch (e) {
       setDownloadError(

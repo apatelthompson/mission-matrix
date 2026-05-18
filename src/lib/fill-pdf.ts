@@ -16,17 +16,20 @@ import type {
 import { quadrantFor } from "./mission-matrix-types";
 
 /**
- * Renders a finished Mission Matrix report PDF from a saved
- * AssessmentState. This is a full report, not a fillable worksheet —
- * the older template-fill approach was retired when the digital flow
- * stopped being a printout-and-pencil exercise.
+ * Two separate PDF entrypoints — one per "Part" of the wizard — so a
+ * Part-I download never accidentally includes Part-II content and vice
+ * versa.
  *
- * Layout:
- *   1. Cover     — title, name, date, profile summary
+ * fillPart1Pdf  (Step 6 / Consent download):
+ *   1. Cover     — title + date
  *   2. Matrix    — 2x2 of quadrant tiles with item counts + first lines
  *   3. Items     — by quadrant, with M·E score chips
  *   4. Reflect   — three prompts + answers, if any
- *   5. Part II   — per quadrant: archetype + brainstorm notes
+ *
+ * fillPart2Pdf  (Step 8 / Audition download):
+ *   1. Matrix + AI-by-quadrant guide — user's matrix on top, archetype
+ *      card per quadrant explaining the shape of AI that fits the work
+ *   2. Audition  — per quadrant: AI suggestions + user's brainstorm notes
  */
 
 // ─── Constants ─────────────────────────────────────────────────────
@@ -65,6 +68,7 @@ const Q_META: Record<
     name: string;
     subtitle: string;
     archetype: string;
+    archetypeDesc: string;
     bg: ReturnType<typeof rgb>;
     ink: ReturnType<typeof rgb>;
   }
@@ -73,6 +77,8 @@ const Q_META: Record<
     name: "Your core craft",
     subtitle: "High meaning · High unique expertise",
     archetype: "Forcefield agent",
+    archetypeDesc:
+      "A persistent agent that quietly handles noise around your work — so you show up present, in lead, bringing the expertise only you can bring.",
     bg: COLORS.qCraftBg,
     ink: COLORS.qCraftInk,
   },
@@ -80,6 +86,8 @@ const Q_META: Record<
     name: "Your growth edge",
     subtitle: "High meaning · Low unique expertise",
     archetype: "Chat with strong memory",
+    archetypeDesc:
+      "You bring the why; the AI brings the how. Use it to learn out loud and accelerate where you're still building.",
     bg: COLORS.qEdgeBg,
     ink: COLORS.qEdgeInk,
   },
@@ -87,6 +95,8 @@ const Q_META: Record<
     name: "Skilled but draining",
     subtitle: "Low meaning · High unique expertise",
     archetype: "Skills / templates",
+    archetypeDesc:
+      "Package the context you've built into something reusable — so the work runs without your full attention each time.",
     bg: COLORS.qSkillBg,
     ink: COLORS.qSkillInk,
   },
@@ -94,6 +104,8 @@ const Q_META: Record<
     name: "Routine tasks",
     subtitle: "Low meaning · Low unique expertise",
     archetype: "Automate — or eliminate",
+    archetypeDesc:
+      "Fire and forget. Or — equally valid — stop doing it at all. Don't spend your scarce attention here.",
     bg: COLORS.qRoutineBg,
     ink: COLORS.qRoutineInk,
   },
@@ -559,10 +571,107 @@ function drawReflections(c: Cursor, state: AssessmentState): Cursor {
   return cur;
 }
 
-function drawAudition(
+// ─── Part 2 sections ──────────────────────────────────────────────
+/**
+ * Page 1 of Part 2 — the user's filled-in matrix at the top, then
+ * four quadrant cards explaining the AI archetype that fits each
+ * quadrant. Acts as the "how to think about AI by quadrant" reference.
+ */
+function drawArchetypeGuide(
+  c: Cursor,
+  byQuad: Record<Quadrant, AssessmentItem[]>,
+): Cursor {
+  const today = new Date().toLocaleDateString("en-US", {
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+  });
+  let cur = drawEyebrow(
+    c,
+    `Mission Matrix · Part II — your AI playbook · ${today}`,
+  );
+  cur = drawSpacer(cur, 6);
+  cur = drawH1(cur, "Auditioning AI for the role.");
+  cur = drawSpacer(cur, 6);
+  cur = drawBody(
+    cur,
+    "Each quadrant calls for a different shape of AI. Your matrix sits below — and after it, the archetype that fits each kind of work.",
+    COLORS.inkMuted,
+  );
+
+  cur = drawMatrixOverview(cur, byQuad);
+  cur = drawSpacer(cur, 16);
+
+  // 2x2 of archetype cards, mirroring the matrix layout
+  // (growth, craft / routine, drain).
+  const gridW = CONTENT_W;
+  const cardW = (gridW - 10) / 2;
+  const cardH = 96;
+  const layout: Array<{ q: Quadrant; col: 0 | 1; row: 0 | 1 }> = [
+    { q: "growth", col: 0, row: 0 },
+    { q: "craft", col: 1, row: 0 },
+    { q: "routine", col: 0, row: 1 },
+    { q: "drain", col: 1, row: 1 },
+  ];
+  cur = ensureSpace(cur, cardH * 2 + 10);
+  const gridTop = cur.y;
+  for (const slot of layout) {
+    const meta = Q_META[slot.q];
+    const x = MARGIN_X + slot.col * (cardW + 10);
+    const y = gridTop - cardH - slot.row * (cardH + 10);
+    cur.page.drawRectangle({
+      x,
+      y,
+      width: cardW,
+      height: cardH,
+      color: meta.bg,
+    });
+    rawDraw(cur.page, meta.name, {
+      x: x + 14,
+      y: y + cardH - 20,
+      font: cur.fonts.serifBold,
+      size: 12,
+      color: meta.ink,
+    });
+    rawDraw(cur.page, meta.archetype.toUpperCase(), {
+      x: x + 14,
+      y: y + cardH - 36,
+      font: cur.fonts.bodyBold,
+      size: 8,
+      color: meta.ink,
+    });
+    const descLines = wrapText(
+      meta.archetypeDesc,
+      cur.fonts.body,
+      9,
+      cardW - 28,
+    );
+    let dy = y + cardH - 50;
+    for (const line of descLines) {
+      if (dy < y + 10) break;
+      rawDraw(cur.page, line, {
+        x: x + 14,
+        y: dy,
+        font: cur.fonts.body,
+        size: 9,
+        color: meta.ink,
+      });
+      dy -= 12;
+    }
+  }
+  return { ...cur, y: gridTop - cardH * 2 - 10 };
+}
+
+/**
+ * Part 2 page(s) 2+ — for each quadrant the user has content in, render
+ * the AI-generated suggestions (per-item if items exist, or quadrant-
+ * level inspiration otherwise) and the user's brainstorm notes.
+ */
+function drawAuditionContent(
   c: Cursor,
   byQuad: Record<Quadrant, AssessmentItem[]>,
   state: AssessmentState,
+  suggestions: Record<string, string[]>,
 ): Cursor {
   const notesField: Record<
     Quadrant,
@@ -574,38 +683,41 @@ function drawAudition(
     drain: "brainstorm_drain",
   };
 
-  const hasAnyNotes = (
-    ["craft", "growth", "drain", "routine"] as Quadrant[]
-  ).some((q) => state[notesField[q]] && state[notesField[q]]!.trim());
-  const hasAnyItems = (
-    ["craft", "growth", "drain", "routine"] as Quadrant[]
-  ).some((q) => byQuad[q].length > 0);
-  if (!hasAnyNotes && !hasAnyItems) return c;
+  function quadrantHasContent(q: Quadrant): boolean {
+    if (state[notesField[q]] && state[notesField[q]]!.trim()) return true;
+    const inspKey = `__inspiration_${q}__`;
+    if ((suggestions[inspKey] || []).length > 0) return true;
+    for (const it of byQuad[q]) {
+      if ((suggestions[it.text] || []).length > 0) return true;
+    }
+    return false;
+  }
 
-  // Part II starts on a fresh page so it reads as a distinct section.
+  const hasAny = (["craft", "growth", "drain", "routine"] as Quadrant[]).some(
+    quadrantHasContent,
+  );
+  if (!hasAny) return c;
+
   const page = newPage(c.doc);
   let cur: Cursor = { ...c, page, y: PAGE_HEIGHT - MARGIN_TOP };
 
-  cur = drawEyebrow(cur, "Part II · Audition AI for the role");
-  cur = drawSpacer(cur, 6);
-  cur = drawH1(cur, "What you'd build.");
-  cur = drawSpacer(cur, 6);
-  cur = drawBody(
-    cur,
-    "Each quadrant calls for a different shape of AI. Below: the archetype that fits the work in that quadrant, and your notes on what you'd actually build.",
-    COLORS.inkMuted,
-  );
-  cur = drawSpacer(cur, 20);
+  cur = drawEyebrow(cur, "Your brainstorm");
+  cur = drawSpacer(cur, 4);
+  cur = drawH2(cur, "What you'd build, by quadrant.");
+  cur = drawSpacer(cur, 14);
 
   for (const q of ["craft", "growth", "drain", "routine"] as Quadrant[]) {
+    if (!quadrantHasContent(q)) continue;
     const meta = Q_META[q];
     const notes = state[notesField[q]]?.trim() ?? "";
+    const inspKey = `__inspiration_${q}__`;
+    const inspiration = suggestions[inspKey] || [];
     const items = byQuad[q];
-    if (!notes && items.length === 0) continue;
 
-    cur = ensureSpace(cur, 90);
+    cur = ensureSpace(cur, 80);
 
-    const headerH = 36;
+    // Quadrant header strip
+    const headerH = 32;
     cur.page.drawRectangle({
       x: MARGIN_X,
       y: cur.y - headerH,
@@ -615,89 +727,77 @@ function drawAudition(
     });
     rawDraw(cur.page, meta.name, {
       x: MARGIN_X + 14,
-      y: cur.y - 16,
+      y: cur.y - 14,
       font: cur.fonts.serifBold,
-      size: 14,
+      size: 13,
       color: meta.ink,
     });
-    rawDraw(cur.page, `AI archetype: ${meta.archetype}`, {
+    rawDraw(cur.page, meta.archetype.toUpperCase(), {
       x: MARGIN_X + 14,
-      y: cur.y - 30,
+      y: cur.y - 26,
       font: cur.fonts.bodyBold,
-      size: 9,
-      color: meta.ink,
-    });
-    const sub = `${items.length} item${items.length === 1 ? "" : "s"}`;
-    rawDraw(cur.page, sub, {
-      x:
-        MARGIN_X +
-        CONTENT_W -
-        14 -
-        cur.fonts.body.widthOfTextAtSize(sub, 10),
-      y: cur.y - 22,
-      font: cur.fonts.body,
-      size: 10,
+      size: 8,
       color: meta.ink,
     });
     cur = { ...cur, y: cur.y - headerH - 12 };
 
-    for (const it of items.slice(0, 6)) {
-      cur = ensureSpace(cur, 16);
-      rawDraw(cur.page, "•", {
-        x: MARGIN_X + 4,
-        y: cur.y - 11,
-        font: cur.fonts.body,
-        size: 11,
-        color: COLORS.inkMuted,
-      });
-      const lines = wrapText(it.text, cur.fonts.body, 11, CONTENT_W - 20);
-      for (let i = 0; i < lines.length; i++) {
-        rawDraw(cur.page, lines[i], {
-          x: MARGIN_X + 16,
-          y: cur.y - 11 - i * 15,
-          font: cur.fonts.body,
-          size: 11,
-          color: COLORS.ink,
-        });
+    // AI suggestions — per-item if items exist, otherwise quadrant-level
+    // inspiration. Each suggestion is one body paragraph.
+    const aiBlocks: Array<{ heading?: string; body: string }> = [];
+    if (items.length > 0) {
+      for (const it of items) {
+        const sug = suggestions[it.text] || [];
+        if (sug.length === 0) continue;
+        aiBlocks.push({ heading: it.text, body: sug.join("\n\n") });
       }
-      cur = { ...cur, y: cur.y - Math.max(15, lines.length * 15) - 2 };
-    }
-    if (items.length > 6) {
-      cur = drawBody(cur, `+ ${items.length - 6} more`, COLORS.inkMuted);
+    } else if (inspiration.length > 0) {
+      aiBlocks.push({ body: inspiration.join("\n\n") });
     }
 
-    if (notes) {
-      cur = drawSpacer(cur, 8);
-      cur = drawText(cur, "Your notes — what you'd build", {
+    if (aiBlocks.length > 0) {
+      cur = drawText(cur, "AI suggestions", {
         font: cur.fonts.bodyBold,
         size: 9,
-        color: COLORS.inkMuted,
-        lineHeight: 14,
+        color: COLORS.forest,
+        lineHeight: 13,
+      });
+      cur = drawSpacer(cur, 4);
+      for (const b of aiBlocks) {
+        if (b.heading) {
+          cur = drawText(cur, `· ${b.heading}`, {
+            font: cur.fonts.bodyBold,
+            size: 10,
+            color: COLORS.ink,
+            lineHeight: 14,
+          });
+          cur = drawSpacer(cur, 2);
+        }
+        cur = drawBody(cur, b.body, COLORS.inkSoft);
+        cur = drawSpacer(cur, 8);
+      }
+    }
+
+    // User notes from the textarea
+    if (notes) {
+      cur = drawSpacer(cur, 4);
+      cur = drawText(cur, "Your notes", {
+        font: cur.fonts.bodyBold,
+        size: 9,
+        color: COLORS.forest,
+        lineHeight: 13,
       });
       cur = drawSpacer(cur, 2);
       cur = drawBody(cur, notes, COLORS.ink);
     }
 
-    cur = drawSpacer(cur, 18);
+    cur = drawSpacer(cur, 20);
   }
 
   return cur;
 }
 
-// ─── Entrypoint ────────────────────────────────────────────────────
-export async function fillAssessmentPdf(
-  state: AssessmentState,
-): Promise<Uint8Array> {
-  const doc = await PDFDocument.create();
-  // fontkit is required to embed custom TTF/OTF fonts
-  doc.registerFontkit(fontkit);
-  doc.setTitle("Your Mission Matrix");
-  doc.setAuthor(state.name?.trim() || "Mission Matrix");
-  doc.setCreator("Mission Matrix");
-  doc.setProducer("Mission Matrix");
-
-  const fonts = await loadFonts(doc);
-
+// ─── Entrypoints ───────────────────────────────────────────────────
+function buildByQuad(state: AssessmentState): Record<Quadrant, AssessmentItem[]> {
   const byQuad: Record<Quadrant, AssessmentItem[]> = {
     craft: [],
     growth: [],
@@ -708,21 +808,73 @@ export async function fillAssessmentPdf(
     if (it.meaning == null || it.expertise == null || !it.text.trim()) continue;
     byQuad[quadrantFor(it.meaning, it.expertise)].push(it);
   }
+  return byQuad;
+}
 
-  const firstPage = newPage(doc);
-  let cur: Cursor = {
+async function bootstrapDoc(state: AssessmentState) {
+  const doc = await PDFDocument.create();
+  doc.registerFontkit(fontkit);
+  doc.setTitle("Your Mission Matrix");
+  doc.setAuthor(state.name?.trim() || "Mission Matrix");
+  doc.setCreator("Mission Matrix");
+  doc.setProducer("Mission Matrix");
+  const fonts = await loadFonts(doc);
+  const page = newPage(doc);
+  const cursor: Cursor = {
     doc,
-    page: firstPage,
+    page,
     y: PAGE_HEIGHT - MARGIN_TOP,
     fonts,
   };
+  return { doc, cursor };
+}
 
-  cur = drawCover(cur, state);
+/**
+ * Part 1 — the matrix report. Cover, matrix, items in detail, and
+ * reflections. Strictly no Part-II / audition content.
+ */
+export async function fillPart1Pdf(
+  state: AssessmentState,
+): Promise<Uint8Array> {
+  const { doc, cursor } = await bootstrapDoc(state);
+  const byQuad = buildByQuad(state);
+
+  let cur = drawCover(cursor, state);
   cur = drawMatrixOverview(cur, byQuad);
   cur = drawItemsByQuadrant(cur, byQuad);
   cur = drawReflections(cur, state);
-  cur = drawAudition(cur, byQuad, state);
   void cur;
 
   return doc.save();
 }
+
+/**
+ * Part 2 — the AI playbook. Page 1: filled-in matrix + per-quadrant
+ * AI archetype guide. Page 2+: AI suggestions + the user's brainstorm
+ * notes for each quadrant. No cover, no reflections, no Part-I content
+ * leaking in.
+ *
+ * `suggestions` is passed in by the caller because the AI cache lives
+ * in client state (suggestions_by_item) — not in Airtable — so the
+ * download path POSTs it inline.
+ */
+export async function fillPart2Pdf(
+  state: AssessmentState,
+  suggestions: Record<string, string[]> = {},
+): Promise<Uint8Array> {
+  const { doc, cursor } = await bootstrapDoc(state);
+  const byQuad = buildByQuad(state);
+
+  let cur = drawArchetypeGuide(cursor, byQuad);
+  cur = drawAuditionContent(cur, byQuad, state, suggestions);
+  void cur;
+
+  return doc.save();
+}
+
+/**
+ * Back-compat alias for any caller still importing the old name.
+ * Defaults to Part 1 since that's what the legacy download flow
+ * produced (everything-in-one).
+ */
+export const fillAssessmentPdf = fillPart1Pdf;
