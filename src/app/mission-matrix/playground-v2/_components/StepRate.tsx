@@ -55,11 +55,11 @@ const MEANING_RAMP = [
   { label: "lights me up" },
 ];
 const EXPERTISE_RAMP = [
-  { label: "anyone could" },
-  { label: "many could" },
-  { label: "some could" },
-  { label: "few could" },
-  { label: "only I could" },
+  { label: "anyone could do this" },
+  { label: "easy to hand off — a few weeks to ramp" },
+  { label: "takes significant context to do well" },
+  { label: "takes years to do at my level" },
+  { label: "one of the only people in my org with the context to do this" },
 ];
 
 function Scale({
@@ -152,12 +152,15 @@ function Scale({
               </span>
               <span
                 style={{
-                  fontSize: 12,
+                  fontSize: 11.5,
                   fontWeight: selected ? 700 : 500,
                   color: selected ? "var(--ink)" : "var(--ink-muted)",
                   letterSpacing: -0.1,
                   textAlign: "center",
-                  whiteSpace: "nowrap",
+                  lineHeight: 1.3,
+                  // Longer expertise labels (e.g. "one of the only people
+                  // in my org with the context to do this") need to wrap
+                  // gracefully under their pill.
                   transition: "color .15s, font-weight .15s",
                 }}
               >
