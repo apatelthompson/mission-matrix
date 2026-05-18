@@ -190,7 +190,10 @@ function FocusedPanel({
   notes: string;
   onNotesChange: (v: string) => void;
 }) {
-  const hasAny = items.some((t) => (suggestions[t.text] || []).length > 0);
+  const hasAny =
+    items.length === 0
+      ? (suggestions[`__inspiration_${q}__`] || []).length > 0
+      : items.some((t) => (suggestions[t.text] || []).length > 0);
 
   return (
     <section
@@ -262,17 +265,49 @@ function FocusedPanel({
         }}
       >
         {items.length === 0 ? (
-          <p
-            style={{
-              margin: 0,
-              fontSize: 14,
-              color: meta.ink,
-              opacity: 0.6,
-              fontStyle: "italic",
-            }}
-          >
-            Nothing landed here. Skip and come back if you want.
-          </p>
+          <>
+            <p
+              style={{
+                margin: 0,
+                fontSize: 14,
+                color: meta.ink,
+                opacity: 0.6,
+                fontStyle: "italic",
+              }}
+            >
+              Nothing landed here yet. Click below to see what kinds of
+              helpers this quadrant calls for — handy for thinking about
+              what work might belong here later.
+            </p>
+            {/* Quadrant-level inspiration (shown when no items exist) */}
+            {(suggestions[`__inspiration_${q}__`] || []).length > 0 && (
+              <div
+                style={{
+                  marginTop: 14,
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 6,
+                }}
+              >
+                {(suggestions[`__inspiration_${q}__`] || []).map((s, i) => (
+                  <div
+                    key={i}
+                    style={{
+                      fontSize: 13,
+                      lineHeight: 1.45,
+                      color: meta.ink,
+                      background: "rgba(255,255,255,0.6)",
+                      borderLeft: `2px solid ${meta.ink}55`,
+                      padding: "8px 12px",
+                      borderRadius: 6,
+                    }}
+                  >
+                    {s}
+                  </div>
+                ))}
+              </div>
+            )}
+          </>
         ) : (
           items.map((t) => {
             const sug = suggestions[t.text] || [];
@@ -330,59 +365,61 @@ function FocusedPanel({
         )}
       </div>
 
-      {items.length > 0 && (
-        <div
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 12,
+          flexShrink: 0,
+        }}
+      >
+        <button
+          type="button"
+          onClick={onGenerate}
+          disabled={loading}
           style={{
-            display: "flex",
+            display: "inline-flex",
             alignItems: "center",
-            gap: 12,
-            flexShrink: 0,
+            gap: 8,
+            padding: "8px 16px",
+            background: "rgba(255,255,255,0.7)",
+            border: `1.5px solid ${meta.ink}`,
+            borderRadius: 100,
+            color: meta.ink,
+            fontFamily: "inherit",
+            fontSize: 13,
+            fontWeight: 700,
+            cursor: loading ? "wait" : "pointer",
+            transition: "background .15s",
+            opacity: loading ? 0.7 : 1,
+          }}
+          onMouseEnter={(e) => {
+            if (!loading)
+              (e.currentTarget as HTMLButtonElement).style.background =
+                "rgba(255,255,255,0.95)";
+          }}
+          onMouseLeave={(e) => {
+            (e.currentTarget as HTMLButtonElement).style.background =
+              "rgba(255,255,255,0.7)";
           }}
         >
-          <button
-            type="button"
-            onClick={onGenerate}
-            disabled={loading}
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 8,
-              padding: "8px 16px",
-              background: "rgba(255,255,255,0.7)",
-              border: `1.5px solid ${meta.ink}`,
-              borderRadius: 100,
-              color: meta.ink,
-              fontFamily: "inherit",
-              fontSize: 13,
-              fontWeight: 700,
-              cursor: loading ? "wait" : "pointer",
-              transition: "background .15s",
-              opacity: loading ? 0.7 : 1,
-            }}
-            onMouseEnter={(e) => {
-              if (!loading)
-                (e.currentTarget as HTMLButtonElement).style.background =
-                  "rgba(255,255,255,0.95)";
-            }}
-            onMouseLeave={(e) => {
-              (e.currentTarget as HTMLButtonElement).style.background =
-                "rgba(255,255,255,0.7)";
-            }}
-          >
-            <span>{loading ? "…" : "✨"}</span>
-            {loading
-              ? "Generating…"
+          <span>{loading ? "…" : "✨"}</span>
+          {loading
+            ? "Generating…"
+            : items.length === 0
+              ? hasAny
+                ? "Refresh inspiration"
+                : "Get inspiration"
               : hasAny
                 ? "Refresh suggestions"
                 : "Get AI suggestions"}
-          </button>
-          {error && (
-            <span style={{ fontSize: 12, color: meta.ink, opacity: 0.7 }}>
-              {error}
-            </span>
-          )}
-        </div>
-      )}
+        </button>
+        {error && (
+          <span style={{ fontSize: 12, color: meta.ink, opacity: 0.7 }}>
+            {error}
+          </span>
+        )}
+      </div>
 
       <div
         style={{
@@ -453,12 +490,6 @@ export default function StepAudition({
   async function downloadFullAssessment() {
     if (downloading) return;
 
-    // Cache hit — reuse the existing Airtable row's id, no new save.
-    if (savedId) {
-      window.open(`/api/assessment/${savedId}/pdf`, "_blank");
-      return;
-    }
-
     // De-dupe concurrent clicks (e.g. double-click on the button).
     if (inFlightRef.current) {
       const id = await inFlightRef.current;
@@ -466,6 +497,11 @@ export default function StepAudition({
       return;
     }
 
+    // Always save fresh — by the time the user reaches Step 8, the
+    // state has materially changed (they've added Part II brainstorm
+    // notes). Reusing a cached id would open a stale PDF without those
+    // notes. We accept that this can create a 2nd Airtable row when the
+    // user also downloaded from Step 6.
     setDownloading(true);
     setDownloadError(null);
     const promise: Promise<string | null> = (async () => {
@@ -546,7 +582,8 @@ export default function StepAudition({
 
   async function generate() {
     const items = byQuadrant[active];
-    if (items.length === 0) return;
+    // Empty items is allowed — the API returns quadrant-level inspiration
+    // instead of per-item suggestions.
     setLoading(true);
     setError(null);
     try {

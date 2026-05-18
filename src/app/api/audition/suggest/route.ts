@@ -118,7 +118,7 @@ export async function POST(req: Request) {
   }
 
   const { quadrant, items, profile } = body;
-  if (!quadrant || !Array.isArray(items) || items.length === 0) {
+  if (!quadrant || !Array.isArray(items)) {
     return NextResponse.json(
       { error: "quadrant and items[] are required" },
       { status: 400 },
@@ -127,6 +127,9 @@ export async function POST(req: Request) {
   if (!QUADRANT_GUIDE[quadrant]) {
     return NextResponse.json({ error: "Unknown quadrant" }, { status: 400 });
   }
+  // Empty items = "no work landed in this quadrant" — return generic
+  // quadrant-level inspiration instead of per-item suggestions.
+  const emptyQuadrant = items.length === 0;
 
   const guide = QUADRANT_GUIDE[quadrant];
   const quadrantMeta = QUADRANT_META[quadrant];
@@ -154,7 +157,31 @@ Tailor every suggestion to their role, team size, and tenure. A CEO of a 5-perso
 
 Your job is to suggest concrete, buildable AI helpers — not vague advice. Each suggestion should be one tight sentence that names the helper's job and (when possible) hints at how it would work.`;
 
-  const userText = `For each of these work items in the **${quadrantMeta.title}** quadrant (${quadrantMeta.subtitle}), suggest exactly 2 concrete AI helper sketches.
+  const userText = emptyQuadrant
+    ? `The user has no work items in the **${quadrantMeta.title}** quadrant yet. Generate 3 GENERIC inspiration sketches showing what kinds of AI helpers fit this quadrant for someone in their role — so they can see what's possible if work landed here later.
+
+The ONLY archetype that fits this quadrant: **${guide.archetype}**.
+
+WHAT TO SUGGEST (every sketch must be one of these):
+${guide.suggest}
+
+WHAT NOT TO SUGGEST:
+${guide.forbid}
+
+Lead every sketch with one of these phrasing patterns: ${guide.leadWith}.
+
+NAMED TOOLS:
+${guide.namedTools}
+
+Respond as a single JSON object with this exact shape — no markdown, no prose:
+{
+  "suggestions": {
+    "__inspiration_${quadrant}__": ["sketch 1", "sketch 2", "sketch 3"]
+  }
+}
+
+Each sketch: one sentence, specific, actionable. No filler. Reference the user's role/team/company context where it adds signal.`
+    : `For each of these work items in the **${quadrantMeta.title}** quadrant (${quadrantMeta.subtitle}), suggest exactly 2 concrete AI helper sketches.
 
 The ONLY archetype that fits this quadrant: **${guide.archetype}**.
 
