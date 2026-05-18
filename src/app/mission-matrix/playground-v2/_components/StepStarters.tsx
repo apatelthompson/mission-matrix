@@ -1,177 +1,224 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useAssessment } from "../../assessment/_components/AssessmentContext";
-import { findSeedRole } from "@/lib/mission-matrix-seeds";
-import type { AssessmentItem } from "@/lib/mission-matrix-types";
+import { findSeedRole, type SeedRole, type SeedTask } from "@/lib/mission-matrix-seeds";
+import type {
+  AssessmentItem,
+  Quadrant,
+} from "@/lib/mission-matrix-types";
 import { PgFrame, PgBottom } from "./PgShell";
 
 const MIN_FILLED = 5;
-const MAX_ITEMS = 20;
+const INITIAL_SLOTS = 5;
+const MAX_SLOTS = 20;
 
-interface Row {
+interface Slot {
   id: string;
   text: string;
-  selected: boolean;
-  /** A "starter" came from the seed library and shouldn't be deletable;
-   *  custom rows the user added get a delete affordance. */
-  starter: boolean;
 }
 
-function PgCheck({ checked }: { checked: boolean }) {
+/**
+ * Pick ~7 suggestions from the seed library with a balanced spread
+ * across quadrants — 2 craft + 2 growth + 2 routine + 1 drain. Skewing
+ * away from drain on purpose: those items (the "I'm great at it but
+ * it costs me" set) tend to land later in the matrix and feel a bit
+ * pointed for an opening suggestion.
+ */
+function pickSuggestions(role: SeedRole | undefined): SeedTask[] {
+  if (!role) return [];
+  const byHint: Record<Quadrant, SeedTask[]> = {
+    craft: [],
+    growth: [],
+    routine: [],
+    drain: [],
+  };
+  for (const t of role.tasks) byHint[t.hint].push(t);
+  return [
+    ...byHint.craft.slice(0, 2),
+    ...byHint.growth.slice(0, 2),
+    ...byHint.routine.slice(0, 2),
+    ...byHint.drain.slice(0, 1),
+  ];
+}
+
+// ─── Suggestion chip ───────────────────────────────────────────────
+function SuggestionChip({
+  text,
+  used,
+  onPick,
+}: {
+  text: string;
+  used: boolean;
+  onPick: () => void;
+}) {
   return (
-    <div
+    <button
+      type="button"
+      draggable={!used}
+      onDragStart={(e) => {
+        e.dataTransfer.setData("text/plain", text);
+        e.dataTransfer.effectAllowed = "copy";
+        (e.currentTarget as HTMLButtonElement).style.opacity = "0.5";
+      }}
+      onDragEnd={(e) => {
+        (e.currentTarget as HTMLButtonElement).style.opacity = used ? "0.4" : "1";
+      }}
+      onClick={() => {
+        if (!used) onPick();
+      }}
+      disabled={used}
+      title={used ? "Already on your plate" : "Click or drag onto your plate"}
       style={{
-        width: 20,
-        height: 20,
-        borderRadius: 6,
-        background: checked ? "var(--forest)" : "var(--paper-bright)",
-        border: `1.5px solid ${checked ? "var(--forest)" : "var(--rule)"}`,
-        display: "grid",
-        placeItems: "center",
+        textAlign: "left",
+        padding: "10px 14px",
+        background: used ? "var(--paper-soft)" : "var(--paper-bright)",
+        border: `1px solid ${used ? "var(--line-soft)" : "var(--line)"}`,
+        borderRadius: 12,
+        cursor: used ? "default" : "grab",
+        fontFamily: "inherit",
+        fontSize: 14,
+        lineHeight: 1.35,
+        color: used ? "var(--ink-faint)" : "var(--ink-soft)",
+        opacity: used ? 0.55 : 1,
         transition: "all .15s ease",
-        flexShrink: 0,
+        userSelect: "none",
+      }}
+      onMouseEnter={(e) => {
+        if (used) return;
+        const el = e.currentTarget as HTMLButtonElement;
+        el.style.borderColor = "var(--forest)";
+        el.style.background = "var(--forest-soft)";
+        el.style.color = "var(--forest-deep)";
+      }}
+      onMouseLeave={(e) => {
+        if (used) return;
+        const el = e.currentTarget as HTMLButtonElement;
+        el.style.borderColor = "var(--line)";
+        el.style.background = "var(--paper-bright)";
+        el.style.color = "var(--ink-soft)";
       }}
     >
-      <svg
-        width="12"
-        height="12"
-        viewBox="0 0 14 14"
-        fill="none"
-        style={{
-          opacity: checked ? 1 : 0,
-          transition: "opacity .12s ease",
-        }}
-      >
-        <path
-          d="M3 7.5L5.8 10.2L11 4"
-          stroke="#fff"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-      </svg>
-    </div>
+      {text}
+    </button>
   );
 }
 
-function TaskRow({
+// ─── Plate slot (number + input + clear) ───────────────────────────
+function PlateSlot({
+  index,
   text,
-  checked,
-  starter,
-  onToggle,
-  onEditText,
-  onDelete,
+  onChange,
+  onDrop,
+  onClear,
+  canRemove,
 }: {
+  index: number;
   text: string;
-  checked: boolean;
-  starter: boolean;
-  onToggle: () => void;
-  onEditText: (next: string) => void;
-  onDelete: () => void;
+  onChange: (v: string) => void;
+  onDrop: (v: string) => void;
+  onClear: () => void;
+  canRemove: boolean;
 }) {
-  // Row is a div (not a button) so clicking inside the input doesn't
-  // toggle selection. The checkbox handles toggle on its own click.
+  const [dragOver, setDragOver] = useState(false);
   return (
     <div
+      onDragOver={(e) => {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = "copy";
+        if (!dragOver) setDragOver(true);
+      }}
+      onDragLeave={() => setDragOver(false)}
+      onDrop={(e) => {
+        e.preventDefault();
+        const payload = e.dataTransfer.getData("text/plain");
+        if (payload) onDrop(payload);
+        setDragOver(false);
+      }}
       style={{
         display: "flex",
         alignItems: "center",
         gap: 12,
-        width: "100%",
-        padding: "10px 14px",
-        background: checked ? "var(--forest-soft)" : "transparent",
-        border: `1px solid ${checked ? "#C7D3B5" : "transparent"}`,
+        padding: "8px 12px",
         borderRadius: 10,
+        background: dragOver ? "var(--forest-soft)" : "transparent",
+        border: `1.5px solid ${
+          dragOver ? "var(--forest)" : "transparent"
+        }`,
         transition: "background .15s ease, border-color .15s ease",
       }}
-      onMouseEnter={(e) => {
-        if (!checked)
-          (e.currentTarget as HTMLDivElement).style.background =
-            "var(--paper-soft)";
-      }}
-      onMouseLeave={(e) => {
-        if (!checked)
-          (e.currentTarget as HTMLDivElement).style.background = "transparent";
-      }}
     >
-      <button
-        type="button"
-        onClick={onToggle}
-        aria-label={checked ? "Uncheck" : "Check"}
+      <span
         style={{
-          appearance: "none",
-          background: "transparent",
-          border: "none",
-          padding: 0,
-          cursor: "pointer",
-          display: "flex",
-          alignItems: "center",
+          fontSize: 11,
+          fontWeight: 700,
+          color: "var(--ink-faint)",
+          fontVariantNumeric: "tabular-nums",
+          width: 22,
           flexShrink: 0,
         }}
       >
-        <PgCheck checked={checked} />
-      </button>
+        {String(index + 1).padStart(2, "0")}
+      </span>
       <input
         type="text"
         value={text}
-        onChange={(e) => onEditText(e.target.value)}
-        placeholder="Edit this task or write your own…"
+        onChange={(e) => onChange(e.target.value)}
+        placeholder="Drag a suggestion or type your own…"
         style={{
           flex: 1,
           minWidth: 0,
           fontSize: 15,
-          lineHeight: 1.3,
-          color: checked ? "var(--ink)" : "var(--ink-soft)",
-          fontWeight: checked ? 500 : 400,
+          lineHeight: 1.35,
+          color: "var(--ink)",
           fontFamily: "inherit",
           background: "transparent",
-          border: "1px solid transparent",
-          borderRadius: 6,
-          padding: "4px 8px",
-          margin: "-4px -8px",
-          transition: "background .12s ease, border-color .12s ease",
+          border: "none",
+          borderBottom: "1px solid var(--line)",
+          borderRadius: 0,
+          padding: "8px 4px",
+          outline: "none",
+          transition: "border-color .15s ease",
         }}
         onFocus={(e) => {
-          (e.currentTarget as HTMLInputElement).style.background =
-            "rgba(255,255,255,0.7)";
-          (e.currentTarget as HTMLInputElement).style.borderColor =
-            "var(--rule)";
+          (e.currentTarget as HTMLInputElement).style.borderBottomColor =
+            "var(--forest)";
         }}
         onBlur={(e) => {
-          (e.currentTarget as HTMLInputElement).style.background =
-            "transparent";
-          (e.currentTarget as HTMLInputElement).style.borderColor =
-            "transparent";
+          (e.currentTarget as HTMLInputElement).style.borderBottomColor =
+            "var(--line)";
         }}
       />
-      {!starter && (
+      {(text || canRemove) && (
         <button
           type="button"
-          onClick={onDelete}
-          aria-label="Remove task"
+          onClick={onClear}
+          aria-label={canRemove ? "Remove row" : "Clear text"}
+          title={canRemove ? "Remove row" : "Clear text"}
           style={{
-            fontSize: 10,
-            fontWeight: 700,
-            letterSpacing: 0.4,
-            textTransform: "uppercase",
-            color: "var(--ink-faint)",
-            padding: "3px 8px",
+            width: 24,
+            height: 24,
             borderRadius: 100,
-            border: "1px solid var(--line)",
             background: "transparent",
+            border: "1px solid var(--line)",
+            color: "var(--ink-muted)",
+            fontFamily: "inherit",
+            fontSize: 13,
+            lineHeight: 1,
             cursor: "pointer",
             flexShrink: 0,
-            fontFamily: "inherit",
+            display: "grid",
+            placeItems: "center",
           }}
         >
-          your own
+          ×
         </button>
       )}
     </div>
   );
 }
 
+// ─── Step ──────────────────────────────────────────────────────────
 export default function StepStarters({
   onNext,
   onBack,
@@ -181,113 +228,92 @@ export default function StepStarters({
 }) {
   const { state, update } = useAssessment();
   const role = findSeedRole(state.function_area ?? "");
+  const suggestions = useMemo(() => pickSuggestions(role), [role]);
 
-  const [rows, setRows] = useState<Row[]>(() => {
-    const existingTexts = new Set(
-      state.items.filter((it) => it.text.trim()).map((it) => it.text.trim()),
-    );
-    if (role) {
-      const seeded: Row[] = role.tasks.map((t, i) => ({
-        id: `s${i}`,
-        text: t.text,
-        selected: existingTexts.size === 0 ? true : existingTexts.has(t.text),
-        starter: true,
-      }));
-      const seedTexts = new Set(role.tasks.map((t) => t.text));
-      const customs: Row[] = [];
-      let cIdx = 0;
-      for (const it of state.items) {
-        const t = it.text.trim();
-        if (!t || seedTexts.has(t)) continue;
-        customs.push({ id: `c${cIdx++}`, text: t, selected: true, starter: false });
-      }
-      return [...seeded, ...customs];
+  const [slots, setSlots] = useState<Slot[]>(() => {
+    const existing = state.items
+      .filter((it) => it.text.trim())
+      .map((it, i) => ({ id: `s${i}`, text: it.text.trim() }));
+    const initial =
+      existing.length > 0 ? existing : ([] as Slot[]);
+    // Pad up to INITIAL_SLOTS empty rows
+    while (initial.length < INITIAL_SLOTS) {
+      initial.push({ id: `s${initial.length}-empty`, text: "" });
     }
-    if (existingTexts.size > 0) {
-      return state.items
-        .filter((it) => it.text.trim())
-        .map((it, i) => ({
-          id: `c${i}`,
-          text: it.text,
-          selected: true,
-          starter: false,
-        }));
-    }
-    return [];
+    return initial;
   });
 
-  const [adding, setAdding] = useState(false);
-  const [draft, setDraft] = useState("");
-  const inputRef = useRef<HTMLInputElement>(null);
-
-  const selectedCount = rows.filter((r) => r.selected && r.text.trim()).length;
-  const ready = selectedCount >= MIN_FILLED;
-
-  // Sync into shared state.items every change. Preserve any prior scores
-  // by text match so going back from Rate doesn't lose ratings.
+  // Sync slot text → state.items, preserving any prior scores by text match.
   useEffect(() => {
-    const items: AssessmentItem[] = rows
-      .filter((r) => r.selected && r.text.trim())
-      .map((r, i) => {
+    const items: AssessmentItem[] = slots
+      .filter((s) => s.text.trim())
+      .map((s, i) => {
         const prior = state.items.find(
-          (it) => it.text.trim() === r.text.trim(),
+          (it) => it.text.trim() === s.text.trim(),
         );
         return {
           order: i + 1,
-          text: r.text.trim(),
+          text: s.text.trim(),
           meaning: prior?.meaning ?? null,
           expertise: prior?.expertise ?? null,
         };
       });
     update({ items });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [rows]);
+  }, [slots]);
 
-  function toggle(i: number) {
-    setRows((rs) =>
-      rs.map((r, j) => (j === i ? { ...r, selected: !r.selected } : r)),
+  const filled = slots.filter((s) => s.text.trim()).length;
+  const ready = filled >= MIN_FILLED;
+  const usedTexts = useMemo(
+    () => new Set(slots.map((s) => s.text.trim()).filter(Boolean)),
+    [slots],
+  );
+
+  function setSlotText(idx: number, text: string) {
+    setSlots((s) =>
+      s.map((slot, i) => (i === idx ? { ...slot, text } : slot)),
     );
   }
-  function editText(i: number, text: string) {
-    // Editing a seed row converts it to a custom row — once it's been
-    // edited it's functionally the user's own, and we want it deletable.
-    setRows((rs) =>
-      rs.map((r, j) => (j === i ? { ...r, text, starter: false } : r)),
+  function clearSlot(idx: number) {
+    // For rows above the initial 5, clearing removes the row entirely.
+    // For the initial 5, clearing just empties the text so the slot stays.
+    setSlots((s) => {
+      if (s.length > INITIAL_SLOTS) return s.filter((_, i) => i !== idx);
+      return s.map((slot, i) => (i === idx ? { ...slot, text: "" } : slot));
+    });
+  }
+  function pickSuggestion(text: string) {
+    setSlots((s) => {
+      const emptyIdx = s.findIndex((slot) => !slot.text.trim());
+      if (emptyIdx >= 0) {
+        return s.map((slot, i) =>
+          i === emptyIdx ? { ...slot, text } : slot,
+        );
+      }
+      // No empty slot — append a new one
+      if (s.length >= MAX_SLOTS) return s;
+      return [...s, { id: `s${Date.now()}`, text }];
+    });
+  }
+  function addEmptySlot() {
+    setSlots((s) =>
+      s.length >= MAX_SLOTS
+        ? s
+        : [...s, { id: `s${Date.now()}-empty`, text: "" }],
     );
-  }
-  function removeRow(i: number) {
-    setRows((rs) => rs.filter((_, j) => j !== i));
-  }
-  function addCustom() {
-    const text = draft.trim();
-    if (!text) {
-      setAdding(false);
-      return;
-    }
-    if (rows.length >= MAX_ITEMS) {
-      setDraft("");
-      setAdding(false);
-      return;
-    }
-    setRows((rs) => [
-      ...rs,
-      { id: `c${Date.now()}`, text, selected: true, starter: false },
-    ]);
-    setDraft("");
-    setAdding(false);
   }
 
   return (
     <PgFrame
       title="What's on your plate?"
-      subhead="Edit these thought starters or add your own. Start with 5–7. Come back anytime to add more."
+      subhead="Drag a suggestion onto your plate, or type your own. Start with 5 - 7. Come back anytime to add more."
       bottom={
         <PgBottom
           onBack={onBack}
           onContinue={ready ? onNext : undefined}
           continueDisabled={!ready}
           continueLabel="Score these →"
-          hint={!ready ? `${selectedCount} of ${MIN_FILLED} minimum` : null}
+          hint={!ready ? `${filled} of ${MIN_FILLED} minimum` : null}
         />
       }
     >
@@ -295,7 +321,7 @@ export default function StepStarters({
         style={{
           display: "flex",
           flexDirection: "column",
-          gap: 2,
+          gap: 28,
           flex: 1,
           minHeight: 0,
           overflowY: "auto",
@@ -304,105 +330,153 @@ export default function StepStarters({
           marginRight: -8,
         }}
       >
-        {rows.length === 0 && (
-          <div
-            style={{
-              padding: "20px 14px",
-              fontSize: 14,
-              color: "var(--ink-muted)",
-              fontStyle: "italic",
-              lineHeight: 1.5,
-            }}
+        {/* Suggestions */}
+        {suggestions.length > 0 ? (
+          <section
+            style={{ display: "flex", flexDirection: "column", gap: 10 }}
           >
-            We don&apos;t have starter tasks for this function yet — use
-            <strong style={{ color: "var(--forest)" }}> + Add your own </strong>
-            below to list the work that fills your typical week. Five or more
-            to continue.
-          </div>
-        )}
-        {rows.map((r, i) => (
-          <TaskRow
-            key={r.id}
-            text={r.text}
-            checked={r.selected}
-            starter={r.starter}
-            onToggle={() => toggle(i)}
-            onEditText={(t) => editText(i, t)}
-            onDelete={() => removeRow(i)}
-          />
-        ))}
-
-        <div style={{ paddingTop: 6 }}>
-          {adding ? (
-            <div style={{ display: "flex", gap: 8, alignItems: "stretch" }}>
-              <input
-                ref={inputRef}
-                autoFocus
-                className="pg-input"
-                placeholder="e.g. Drafting our next product narrative…"
-                value={draft}
-                onChange={(e) => setDraft(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") addCustom();
-                  if (e.key === "Escape") {
-                    setAdding(false);
-                    setDraft("");
-                  }
-                }}
-                style={{ flex: 1 }}
-              />
-              <button
-                className="pg-pill primary"
-                onClick={addCustom}
-                style={{ padding: "0 18px" }}
-              >
-                Add
-              </button>
-              <button
-                className="pg-pill subtle"
-                onClick={() => {
-                  setAdding(false);
-                  setDraft("");
-                }}
-                style={{ padding: "0 14px" }}
-              >
-                Cancel
-              </button>
-            </div>
-          ) : (
-            <button
-              type="button"
-              onClick={() => setAdding(true)}
-              disabled={rows.length >= MAX_ITEMS}
+            <div
               style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 8,
-                padding: "8px 12px",
-                background: "transparent",
-                border: "none",
-                color: "var(--ink-muted)",
-                cursor: rows.length >= MAX_ITEMS ? "not-allowed" : "pointer",
-                opacity: rows.length >= MAX_ITEMS ? 0.5 : 1,
-                fontFamily: "inherit",
-                fontSize: 14,
-                fontWeight: 600,
-                transition: "color .15s ease",
-              }}
-              onMouseEnter={(e) => {
-                if (rows.length < MAX_ITEMS)
-                  (e.currentTarget as HTMLButtonElement).style.color =
-                    "var(--forest)";
-              }}
-              onMouseLeave={(e) => {
-                (e.currentTarget as HTMLButtonElement).style.color =
-                  "var(--ink-muted)";
+                display: "flex",
+                alignItems: "baseline",
+                gap: 10,
               }}
             >
-              + Add your own
-            </button>
-          )}
-        </div>
+              <h2
+                style={{
+                  margin: 0,
+                  fontSize: 13,
+                  fontWeight: 700,
+                  letterSpacing: 1.2,
+                  textTransform: "uppercase",
+                  color: "var(--forest)",
+                }}
+              >
+                Suggestions for {role!.label}
+              </h2>
+              <span
+                style={{
+                  fontSize: 13,
+                  color: "var(--ink-muted)",
+                }}
+              >
+                Drag onto your plate, or click to add to the first empty slot
+              </span>
+            </div>
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))",
+                gap: 10,
+              }}
+            >
+              {suggestions.map((s) => (
+                <SuggestionChip
+                  key={s.text}
+                  text={s.text}
+                  used={usedTexts.has(s.text)}
+                  onPick={() => pickSuggestion(s.text)}
+                />
+              ))}
+            </div>
+          </section>
+        ) : (
+          <section
+            style={{
+              padding: "14px 16px",
+              background: "var(--paper-soft)",
+              border: "1px dashed var(--line)",
+              borderRadius: 10,
+              fontSize: 13,
+              color: "var(--ink-muted)",
+              fontStyle: "italic",
+            }}
+          >
+            No suggestions for this function yet — fill in the slots below
+            with the work that's actually on your plate.
+          </section>
+        )}
+
+        {/* Plate */}
+        <section style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "baseline",
+              gap: 10,
+            }}
+          >
+            <h2
+              style={{
+                margin: 0,
+                fontSize: 13,
+                fontWeight: 700,
+                letterSpacing: 1.2,
+                textTransform: "uppercase",
+                color: "var(--forest)",
+              }}
+            >
+              Your plate
+            </h2>
+            <span
+              style={{
+                fontSize: 13,
+                color: "var(--ink-muted)",
+              }}
+            >
+              At least {MIN_FILLED}
+            </span>
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+            {slots.map((slot, i) => (
+              <PlateSlot
+                key={slot.id}
+                index={i}
+                text={slot.text}
+                onChange={(v) => setSlotText(i, v)}
+                onDrop={(v) => setSlotText(i, v)}
+                onClear={() => clearSlot(i)}
+                canRemove={i >= INITIAL_SLOTS}
+              />
+            ))}
+          </div>
+          <button
+            type="button"
+            onClick={addEmptySlot}
+            disabled={slots.length >= MAX_SLOTS}
+            style={{
+              alignSelf: "flex-start",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 8,
+              padding: "8px 12px",
+              marginTop: 4,
+              background: "transparent",
+              border: "none",
+              color:
+                slots.length >= MAX_SLOTS
+                  ? "var(--ink-faint)"
+                  : "var(--ink-muted)",
+              cursor: slots.length >= MAX_SLOTS ? "not-allowed" : "pointer",
+              fontFamily: "inherit",
+              fontSize: 14,
+              fontWeight: 600,
+              transition: "color .15s ease",
+            }}
+            onMouseEnter={(e) => {
+              if (slots.length < MAX_SLOTS)
+                (e.currentTarget as HTMLButtonElement).style.color =
+                  "var(--forest)";
+            }}
+            onMouseLeave={(e) => {
+              if (slots.length < MAX_SLOTS)
+                (e.currentTarget as HTMLButtonElement).style.color =
+                  "var(--ink-muted)";
+            }}
+          >
+            + Add more
+          </button>
+        </section>
       </div>
     </PgFrame>
   );
