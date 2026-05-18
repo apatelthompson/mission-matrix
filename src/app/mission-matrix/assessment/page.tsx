@@ -1,60 +1,25 @@
 "use client";
 
-import { useState } from "react";
-import "../mission-matrix.css";
-import "./assessment.css";
+import "../playground-v2/playground.css";
 import { AssessmentProvider } from "./_components/AssessmentContext";
-import ProgressBar from "./_components/ProgressBar";
-import StepProfile from "./_components/StepProfile";
-import StepBrainDump from "./_components/StepBrainDump";
-import StepRate from "./_components/StepRate";
-import StepPlot from "./_components/StepPlot";
-import StepReflect from "./_components/StepReflect";
-import StepConsent from "./_components/StepConsent";
-import StepDone from "./_components/StepDone";
+import {
+  Wizard,
+  PLAYGROUND_V2_STORAGE_KEY,
+} from "../playground-v2/page";
 
-function Wizard() {
-  const [step, setStep] = useState(0);
-  const [assessmentId, setAssessmentId] = useState<string | null>(null);
-
-  const next = () => {
-    setStep((s) => s + 1);
-    if (typeof window !== "undefined") window.scrollTo({ top: 0 });
-  };
-  const back = () => {
-    setStep((s) => Math.max(0, s - 1));
-    if (typeof window !== "undefined") window.scrollTo({ top: 0 });
-  };
-
-  return (
-    <div className="mm-assess">
-      {!assessmentId && <ProgressBar step={step} />}
-
-      {assessmentId ? (
-        <StepDone assessmentId={assessmentId} />
-      ) : step === 0 ? (
-        <StepProfile onNext={next} />
-      ) : step === 1 ? (
-        <StepBrainDump onNext={next} onBack={back} />
-      ) : step === 2 ? (
-        <StepRate onNext={next} onBack={back} />
-      ) : step === 3 ? (
-        <StepPlot onNext={next} onBack={back} />
-      ) : step === 4 ? (
-        <StepReflect onNext={next} onBack={back} />
-      ) : (
-        <StepConsent
-          onBack={back}
-          onDone={(id) => setAssessmentId(id)}
-        />
-      )}
-    </div>
-  );
-}
-
+/**
+ * The live assessment URL — mounts the redesigned wizard that lives in
+ * /playground-v2. Shares storage with /playground-v2 so a return visitor
+ * who started in either entry point picks up where they left off.
+ *
+ * The legacy /assessment/_components/* (StepBrainDump, ProgressBar,
+ * StepDone, etc.) are no longer used by this route; they're kept on
+ * disk for now in case we need to roll back, but can be removed when
+ * we're confident in the new design.
+ */
 export default function Page() {
   return (
-    <AssessmentProvider>
+    <AssessmentProvider storageKey={PLAYGROUND_V2_STORAGE_KEY}>
       <Wizard />
     </AssessmentProvider>
   );
