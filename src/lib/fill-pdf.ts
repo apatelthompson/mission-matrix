@@ -13,10 +13,7 @@ import type {
   AssessmentState,
   Quadrant,
 } from "./mission-matrix-types";
-import {
-  FUNCTION_AREAS,
-  quadrantFor,
-} from "./mission-matrix-types";
+import { quadrantFor } from "./mission-matrix-types";
 
 /**
  * Renders a finished Mission Matrix report PDF from a saved
@@ -154,6 +151,22 @@ function ensureSpace(c: Cursor, needed: number): Cursor {
   return c;
 }
 
+/**
+ * Begin a major section. Reserves room for the leading spacer +
+ * eyebrow + h2 + first content block (`firstBlock` pts). If that
+ * won't all fit on the current page, jumps to a new page first so
+ * the section header doesn't orphan at the bottom.
+ */
+function startSection(c: Cursor, firstBlock: number): Cursor {
+  const SECTION_HEAD = 30 + 14 + 4 + 24 + 12; // spacer + eyebrow + spacer + h2 + spacer
+  const total = SECTION_HEAD + firstBlock;
+  if (c.y - total < MARGIN_BOTTOM) {
+    const page = newPage(c.doc);
+    return { ...c, page, y: PAGE_HEIGHT - MARGIN_TOP };
+  }
+  return drawSpacer(c, 30);
+}
+
 // ─── Text helpers ──────────────────────────────────────────────────
 /**
  * Standard-font Helvetica only encodes WinAnsi-1252. Curly quotes,
@@ -288,56 +301,18 @@ function drawBody(c: Cursor, text: string, color = COLORS.inkSoft): Cursor {
 }
 
 // ─── Sections ──────────────────────────────────────────────────────
-function drawCover(c: Cursor, state: AssessmentState): Cursor {
-  // No title, no byline — straight into the profile. The user's name
-  // and date show up in the PDF's filename + metadata instead.
-  let cur = drawEyebrow(c, "About you");
-  cur = drawSpacer(cur, 4);
-
-  const fnLabel =
-    FUNCTION_AREAS.find((f) => f.id === state.function_area)?.label ?? "";
-  const allRows: Array<[string, string]> = [
-    ["Career stage", state.career_stage ?? state.profession_category ?? ""],
-    ["Function", fnLabel],
-    ["Title", state.role_title],
-    ["Team size you manage", state.team_size_managed ?? ""],
-    ["Company size", state.company_size],
-    ["Years in this role", state.years_experience],
-    ["Company", state.company_name],
-    ["City or country", state.location],
-  ];
-  const rows = allRows.filter(([, v]) => v && String(v).trim());
-
-  const labelCol = 160;
-  for (const [label, value] of rows) {
-    cur = ensureSpace(cur, 22);
-    rawDraw(cur.page, label, {
-      x: MARGIN_X,
-      y: cur.y - 11,
-      font: cur.fonts.bodyBold,
-      size: 11,
-      color: COLORS.ink,
-    });
-    const wrapped = wrapText(
-      String(value),
-      cur.fonts.body,
-      11,
-      CONTENT_W - labelCol,
-    );
-    let yOffset = 0;
-    for (const line of wrapped) {
-      rawDraw(cur.page, line, {
-        x: MARGIN_X + labelCol,
-        y: cur.y - 11 - yOffset,
-        font: cur.fonts.body,
-        size: 11,
-        color: COLORS.inkSoft,
-      });
-      yOffset += 15.5;
-    }
-    cur = { ...cur, y: cur.y - Math.max(22, wrapped.length * 15.5 + 6) };
-  }
-
+function drawCover(c: Cursor, _state: AssessmentState): Cursor {
+  const today = new Date().toLocaleDateString("en-US", {
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+  });
+  let cur = drawEyebrow(
+    c,
+    `Mission Matrix · Personalized report · ${today}`,
+  );
+  cur = drawSpacer(cur, 6);
+  cur = drawH1(cur, "Your Mission Matrix");
   return cur;
 }
 
@@ -451,7 +426,10 @@ function drawItemsByQuadrant(
   c: Cursor,
   byQuad: Record<Quadrant, AssessmentItem[]>,
 ): Cursor {
-  let cur = drawSpacer(c, 30);
+  // First content block = one quadrant header bar (26pt) + one item
+  // row (22pt) + breathing room. Reserve ~60pt so the section header
+  // never orphans above an empty page.
+  let cur = startSection(c, 60);
   cur = drawEyebrow(cur, "Your items, in detail");
   cur = drawSpacer(cur, 4);
   cur = drawH2(cur, "Every task with its scores.");
@@ -553,7 +531,8 @@ function drawReflections(c: Cursor, state: AssessmentState): Cursor {
 
   if (reflections.length === 0) return c;
 
-  let cur = drawSpacer(c, 30);
+  // First content block = one prompt + first line of answer ~ 50pt.
+  let cur = startSection(c, 60);
   cur = drawEyebrow(cur, "What you noticed");
   cur = drawSpacer(cur, 4);
   cur = drawH2(cur, "Your reflections.");
