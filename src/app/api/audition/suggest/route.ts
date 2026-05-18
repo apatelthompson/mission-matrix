@@ -38,6 +38,9 @@ interface RequestBody {
  *   suggest        — what kinds of helpers to suggest (the only kinds)
  *   forbid         — patterns to avoid (helpers from other quadrants)
  *   leadWith       — phrasing pattern for each sketch
+ *   namedTools     — real-world tools the LLM may reference when they
+ *                    clearly fit; do NOT force a named tool, only
+ *                    surface one when it's the obvious answer
  */
 const QUADRANT_GUIDE: Record<
   Quadrant,
@@ -46,15 +49,19 @@ const QUADRANT_GUIDE: Record<
     suggest: string;
     forbid: string;
     leadWith: string;
+    namedTools: string;
   }
 > = {
   craft: {
-    archetype: "Forcefield agent",
+    archetype:
+      "Forcefield agent (the end state) — protection of attention starts with the user knowing their own lines",
     suggest:
-      "Long-running agents that quietly protect the user's attention so they can show up present and in lead. Think: background monitors, inbox triage that surfaces only signal, scheduling shields, presence/availability agents, agents that pre-digest noise before it reaches them. The agent runs continuously — not on-demand.",
+      "The forcefield agent is the LONG-TERM endpoint — a personal agent that knows the user well enough to protect their craft work. Today's task is to help them ARTICULATE the lines a future agent will eventually enforce. Suggest reflection / articulation exercises that surface: (1) what 'in the zone' for this work looks like, (2) what kinds of interruptions should NEVER break it, (3) who has override priority, (4) what signal-vs-noise looks like for the inputs to this work, (5) the rules they wish someone (or something) would enforce on their behalf. These articulations become the future agent's first rules.",
     forbid:
-      "Do NOT suggest chat threads, one-off prompts, Skills, Projects, or simple automations. The user lives in this quadrant — they need protection, not prompts.",
-    leadWith: '"Forcefield agent that…"',
+      "Do NOT suggest tools that have AI participate in the craft work itself — no meeting note-takers (Granola, Otter, Fathom), no inbox-AI (Superhuman, Shortwave), no calendar-AI (Reclaim, Motion, Clockwise), no in-meeting summarizers. The craft is where the human shows up; AI's job here is to protect the work later, not enter it now. Also no Zaps, Skills, Projects, or one-off chat threads — those are other quadrants. Pure articulation exercises here.",
+    leadWith:
+      '"Map the signal:…", "Define the line:…", "Articulate the override list:…", "Write the rule:…", "Name what a future agent would need to know to protect…"',
+    namedTools: "(no named tools for this quadrant — by design)",
   },
   growth: {
     archetype: "Chat with strong memory",
@@ -63,25 +70,31 @@ const QUADRANT_GUIDE: Record<
     forbid:
       "Do NOT suggest autonomous agents, Zaps/automations, or one-line scripts. The growth edge is where the user wants partnership and conversation, not delegation.",
     leadWith:
-      '"Claude Project for…", "Chat thread that…", "System prompt that…"',
+      '"Claude Project for…", "Chat thread that…", "System prompt that…", "NotebookLM loaded with…"',
+    namedTools:
+      "You MAY reference specific tools when they clearly fit the work: **Claude Projects**, **ChatGPT Projects**, **Perplexity** (when the user is learning and needs sources), **NotebookLM** (when reference material is the constraint), **Wispr Flow** (when typing is the bottleneck, not the thinking). Only name a tool when it's the obvious answer — don't force one in.",
   },
   routine: {
     archetype: "Automate — or eliminate",
     suggest:
-      "Concrete automations (Zaps, scheduled scripts, n8n flows, GitHub Actions, calendar rules) OR an explicit elimination move (stop doing it, push to a shared wiki, batch with team, change the upstream process). Always give one of each shape when possible — automation AND elimination — since elimination is usually the higher-leverage answer.",
+      "Concrete automations OR an explicit elimination move (stop doing it, push to a shared wiki, batch with team, change the upstream process). Always give one of each shape when possible — automation AND elimination — since elimination is usually the higher-leverage answer.",
     forbid:
       "Do NOT suggest chat threads, persistent agents, or Skills. The user shouldn't be touching this work to begin with.",
     leadWith:
-      '"Zap that…", "Scheduled script that…", "Eliminate by…", "Push to wiki:…"',
+      '"Zap that…", "Scheduled script that…", "Eliminate by…", "Push to wiki:…", "Batch with team:…"',
+    namedTools:
+      "You MAY reference specific tools when they clearly fit: **Zapier**, **Make**, **n8n**, **GitHub Actions**, **IFTTT** (consumer). Granola is fine here when the suggestion is 'log the call automatically' (transcript as artifact, not as AI participation). Only name a tool when it's the obvious answer.",
   },
   drain: {
     archetype: "Skills / Projects",
     suggest:
-      "Packaged, reusable context the user invokes when they need to do this kind of work — but the AI does the heavy lifting. Think: Claude Skills, Claude Projects, Custom GPTs, prompt templates, a saved system prompt + reference files combo. The user stays in the driver's seat but the friction drops.",
+      "Packaged, reusable context the user invokes when they need to do this kind of work — but the AI does the heavy lifting. The user stays in the driver's seat but the friction drops. Think: a saved system prompt + reference files combo, a template that takes inputs and produces a polished output, a skill that knows the user's voice / format.",
     forbid:
       "Do NOT suggest autonomous agents (this work needs the user's judgment) or simple automations (the work is too contextual). NO chat threads — Skills/Projects are the unit.",
     leadWith:
       '"Claude Skill that…", "Claude Project for…", "Template that…", "Custom GPT that…"',
+    namedTools:
+      "You MAY reference specific tools when they clearly fit: **Claude Skills**, **Claude Projects** (template-loaded), **Custom GPTs**, **Lex** (templated writing), **Notion AI** (in-place drafting), **Grammarly** (review/polish), **Wispr Flow** (when dictation lifts the typing drain). Only name a tool when it's the obvious answer.",
   },
 };
 
@@ -152,6 +165,9 @@ WHAT NOT TO SUGGEST:
 ${guide.forbid}
 
 Lead every sketch with one of these phrasing patterns: ${guide.leadWith}.
+
+NAMED TOOLS:
+${guide.namedTools}
 
 Items:
 ${items.map((it, i) => `${i + 1}. ${it}`).join("\n")}
