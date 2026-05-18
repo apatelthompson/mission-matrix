@@ -86,6 +86,12 @@ export async function saveAssessment(state: AssessmentState) {
       chunk.map((it) => ({
         fields: {
           assessment: [assessmentId],
+          // Plain-text mirror of the parent assessment id. Linked-record
+          // fields in Airtable formulas resolve to the linked record's
+          // primary field value, NOT the record id — so a query like
+          // `{assessment} = 'recXXX'` silently matches nothing. We store
+          // the id as text here so loadAssessment can match reliably.
+          assessment_id: assessmentId,
           order_num: it.order,
           item_text: it.text,
           meaning_score: it.meaning!,
@@ -114,9 +120,12 @@ export async function loadAssessment(
   }
   const fields = record.fields as Record<string, unknown>;
 
+  // Query items by the plain-text assessment_id mirror (see saveAssessment).
+  // `{assessment}` is the linked-record field whose formula value is the
+  // linked record's primary field, not its id — so we can't filter on it.
   const itemRecords = await itemsTable
     .select({
-      filterByFormula: `{assessment} = '${assessmentId}'`,
+      filterByFormula: `{assessment_id} = '${assessmentId}'`,
       pageSize: 100,
     })
     .all();

@@ -49,10 +49,6 @@ function Wizard({ initialStep = 1 }: { initialStep?: number }) {
     setStep(2);
     if (typeof window !== "undefined") window.scrollTo({ top: 0 });
   };
-  const goToConsent = () => {
-    setStep(6);
-    if (typeof window !== "undefined") window.scrollTo({ top: 0 });
-  };
   const restart = () => {
     reset();
     setStep(1);
@@ -90,11 +86,7 @@ function Wizard({ initialStep = 1 }: { initialStep?: number }) {
         {step === 6 && <StepConsent onBack={back} onContinue={next} />}
         {step === 7 && <StepToolTypes onNext={next} onBack={back} />}
         {step === 8 && (
-          <StepAudition
-            onBack={back}
-            onRestart={restart}
-            onJumpToConsent={goToConsent}
-          />
+          <StepAudition onBack={back} onRestart={restart} />
         )}
       </div>
     </div>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useAssessment } from "../../assessment/_components/AssessmentContext";
 import {
   FUNCTION_AREAS,
@@ -423,13 +423,9 @@ function FocusedPanel({
 export default function StepAudition({
   onBack,
   onRestart,
-  onJumpToConsent,
 }: {
   onBack: () => void;
   onRestart: () => void;
-  /** Wiring for the "Download full assessment" CTA — jumps to Step 6
-   *  where the actual submit + download happens. */
-  onJumpToConsent?: () => void;
 }) {
   const { state, update } = useAssessment();
   const [active, setActive] = useState<Quadrant>(() => {
@@ -441,6 +437,50 @@ export default function StepAudition({
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Download-full-assessment state (separate from per-quadrant suggest
+  // loading). Caches the assessmentId so re-clicking doesn't double-save.
+  const [downloading, setDownloading] = useState(false);
+  const [downloadError, setDownloadError] = useState<string | null>(null);
+  const savedIdRef = useRef<string | null>(null);
+
+  async function downloadFullAssessment() {
+    setDownloading(true);
+    setDownloadError(null);
+    try {
+      let id = savedIdRef.current;
+      if (!id) {
+        // The act of clicking Download is implicit consent for the save.
+        const payload: AssessmentState = {
+          ...state,
+          consent_research: state.consent_research || true,
+        };
+        const res = await fetch("/api/assessment", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        if (!res.ok) {
+          const body = (await res.json().catch(() => ({}))) as {
+            error?: string;
+          };
+          throw new Error(body.error || `Save failed (${res.status})`);
+        }
+        const data = (await res.json()) as { assessmentId: string };
+        id = data.assessmentId;
+        savedIdRef.current = id;
+      }
+      window.open(`/api/assessment/${id}/pdf`, "_blank");
+    } catch (e) {
+      setDownloadError(
+        e instanceof Error
+          ? e.message
+          : "Couldn't generate your PDF — try again in a moment.",
+      );
+    } finally {
+      setDownloading(false);
+    }
+  }
 
   const byQuadrant = useMemo(() => {
     const out: Record<Quadrant, FocusedItem[]> = {
@@ -543,6 +583,7 @@ export default function StepAudition({
             <button
               type="button"
               onClick={onRestart}
+              disabled={downloading}
               style={{
                 background: "transparent",
                 border: "none",
@@ -551,21 +592,32 @@ export default function StepAudition({
                 textUnderlineOffset: 3,
                 padding: "8px 4px",
                 fontFamily: "inherit",
-                cursor: "pointer",
+                cursor: downloading ? "not-allowed" : "pointer",
                 fontSize: 14,
                 fontWeight: 600,
               }}
             >
               Start over
             </button>
-            {onJumpToConsent && (
-              <button
-                className="pg-pill primary"
-                onClick={onJumpToConsent}
+            {downloadError && (
+              <span
+                style={{ fontSize: 12, color: "#7a1a1a" }}
+                title={downloadError}
               >
-                Download full assessment
-              </button>
+                {downloadError}
+              </span>
             )}
+            <button
+              className="pg-pill primary"
+              onClick={downloadFullAssessment}
+              disabled={downloading}
+            >
+              {downloading
+                ? "Generating…"
+                : savedIdRef.current
+                  ? "✓ Download again"
+                  : "Download full assessment"}
+            </button>
           </div>
         </>
       }
