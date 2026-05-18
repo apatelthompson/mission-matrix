@@ -46,6 +46,18 @@ export async function saveAssessment(state: AssessmentState) {
   if (state.brainstorm_drain) v2Fields.brainstorm_drain = state.brainstorm_drain;
   if (state.tier) v2Fields.tier = state.tier;
   if (state.invite_code) v2Fields.invite_code = state.invite_code;
+  // The interview transcript is stored as a single JSON-encoded blob
+  // (long text column `interview_transcript`). One column keeps the
+  // schema small and lets us evolve question count without migrating.
+  const hasInterviewContent =
+    (state.interview_answers && state.interview_answers.some((a) => a.trim())) ||
+    (state.interview_calendar && state.interview_calendar.trim());
+  if (hasInterviewContent) {
+    v2Fields.interview_transcript = JSON.stringify({
+      answers: state.interview_answers ?? [],
+      calendar: state.interview_calendar ?? "",
+    });
+  }
 
   const createdAssessment = await assessmentsTable.create([
     {
@@ -142,6 +154,18 @@ export async function updateAssessment(
   if (state.brainstorm_drain) v2Fields.brainstorm_drain = state.brainstorm_drain;
   if (state.tier) v2Fields.tier = state.tier;
   if (state.invite_code) v2Fields.invite_code = state.invite_code;
+  // The interview transcript is stored as a single JSON-encoded blob
+  // (long text column `interview_transcript`). One column keeps the
+  // schema small and lets us evolve question count without migrating.
+  const hasInterviewContent =
+    (state.interview_answers && state.interview_answers.some((a) => a.trim())) ||
+    (state.interview_calendar && state.interview_calendar.trim());
+  if (hasInterviewContent) {
+    v2Fields.interview_transcript = JSON.stringify({
+      answers: state.interview_answers ?? [],
+      calendar: state.interview_calendar ?? "",
+    });
+  }
 
   await assessmentsTable.update([
     {
@@ -270,6 +294,28 @@ export async function loadAssessment(
     invite_code: fields.invite_code
       ? String(fields.invite_code)
       : undefined,
+    ...(() => {
+      // Pull the interview transcript blob back out. Defensive parse —
+      // if the column was renamed or contains garbage, just drop it
+      // rather than crash the PDF render.
+      const raw = fields.interview_transcript;
+      if (!raw) return {};
+      try {
+        const parsed = JSON.parse(String(raw)) as {
+          answers?: unknown;
+          calendar?: unknown;
+        };
+        return {
+          interview_answers: Array.isArray(parsed.answers)
+            ? parsed.answers.map((a) => String(a ?? ""))
+            : undefined,
+          interview_calendar:
+            typeof parsed.calendar === "string" ? parsed.calendar : undefined,
+        };
+      } catch {
+        return {};
+      }
+    })(),
     started_at: Date.now(),
   };
 }

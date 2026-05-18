@@ -148,6 +148,15 @@ export interface AssessmentState {
   /** Verbatim code the user typed; persisted so we can track which
    *  engagement/org a response came from. Validation is server-side. */
   invite_code?: string;
+  /**
+   * Extended-tier interview answers, in order. Step 2 for extended
+   * users replaces the manual brain dump — they answer ~5 questions
+   * (plus an optional calendar paste) and the synthesis endpoint turns
+   * the responses into 7–10 candidate items.
+   */
+  interview_answers?: string[];
+  /** Optional calendar/typical-week paste from the interview. */
+  interview_calendar?: string;
   /** Set after a successful POST to /api/assessment. Subsequent saves
    *  PATCH this row instead of creating a new one. Persists across
    *  reloads via localStorage. */

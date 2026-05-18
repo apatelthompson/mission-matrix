@@ -16,6 +16,7 @@ import StepConsent from "./_components/StepConsent";
 import StepToolTypes from "./_components/StepToolTypes";
 import StepAudition from "./_components/StepAudition";
 import StepArchetypeReference from "./_components/StepArchetypeReference";
+import StepInterview from "./_components/StepInterview";
 
 const PLAYGROUND_V2_STORAGE_KEY = "mm-playground-v2";
 
@@ -28,6 +29,15 @@ const PART_II_START_STEP = 7;
 function Wizard({ initialStep = 1 }: { initialStep?: number }) {
   const [step, setStep] = useState(initialStep);
   const { state, hydrated, reset, saveProgress } = useAssessment();
+  /**
+   * Extended-tier opt-out for the AI interview at Step 2. When true,
+   * Step 2 falls back to the manual seed-suggestion view (StepStarters).
+   * Local-only — survives Back/Continue navigation inside the session
+   * but resets if the user hits Start over. Once items are synthesized,
+   * Step 2 also defaults to the manual editor so revisiting doesn't
+   * restart the interview.
+   */
+  const [skipInterview, setSkipInterview] = useState(false);
 
   // /audition deep-link bounces to step 1 if no rated items exist.
   useEffect(() => {
@@ -61,6 +71,7 @@ function Wizard({ initialStep = 1 }: { initialStep?: number }) {
     // saveProgress's in-memory refs — so the next saveProgress() call
     // POSTs a brand-new row instead of PATCHing the previous one.
     reset();
+    setSkipInterview(false);
     setStep(1);
     if (typeof window !== "undefined") window.scrollTo({ top: 0 });
   };
@@ -84,7 +95,25 @@ function Wizard({ initialStep = 1 }: { initialStep?: number }) {
         }}
       >
         {step === 1 && <StepProfile onNext={next} onRestart={restart} />}
-        {step === 2 && <StepStarters onNext={next} onBack={back} />}
+        {/* Step 2 branches for extended users:
+            - Extended + no items yet + interview not skipped → Interview
+            - Otherwise (base, or interview done, or skipped) → Starters */}
+        {step === 2 &&
+          state.tier === "extended" &&
+          !skipInterview &&
+          !state.items.some((it) => it.text.trim()) && (
+            <StepInterview
+              onNext={next}
+              onBack={back}
+              onSkipToManual={() => setSkipInterview(true)}
+            />
+          )}
+        {step === 2 &&
+          !(
+            state.tier === "extended" &&
+            !skipInterview &&
+            !state.items.some((it) => it.text.trim())
+          ) && <StepStarters onNext={next} onBack={back} />}
         {step === 3 && <StepRate onNext={next} onBack={back} />}
         {step === 4 && (
           <StepPlot
