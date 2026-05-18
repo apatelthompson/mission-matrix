@@ -51,6 +51,17 @@ function Wizard({ initialStep = 1 }: { initialStep?: number }) {
   };
   const restart = () => {
     reset();
+    // Also wipe the per-session save caches so a fresh run gets a new
+    // Airtable row instead of trying to reuse a stale assessmentId from
+    // a previous test session.
+    if (typeof window !== "undefined") {
+      try {
+        sessionStorage.removeItem("mm-saved-id-pt1");
+        sessionStorage.removeItem("mm-saved-id-full");
+      } catch {
+        // sessionStorage can throw in some private-mode situations — fine
+      }
+    }
     setStep(1);
     if (typeof window !== "undefined") window.scrollTo({ top: 0 });
   };
@@ -72,7 +83,7 @@ function Wizard({ initialStep = 1 }: { initialStep?: number }) {
           flexDirection: "column",
         }}
       >
-        {step === 1 && <StepProfile onNext={next} />}
+        {step === 1 && <StepProfile onNext={next} onRestart={restart} />}
         {step === 2 && <StepStarters onNext={next} onBack={back} />}
         {step === 3 && <StepRate onNext={next} onBack={back} />}
         {step === 4 && (

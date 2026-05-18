@@ -9,7 +9,7 @@ import {
   TEAM_SIZES,
   YEARS_EXPERIENCE,
 } from "@/lib/mission-matrix-types";
-import { PgFrame, PgBottom } from "./PgShell";
+import { PgFrame } from "./PgShell";
 
 const TITLE_SUGGESTIONS = [
   "Chief Executive Officer",
@@ -92,7 +92,16 @@ function Field({
   );
 }
 
-export default function StepProfile({ onNext }: { onNext: () => void }) {
+export default function StepProfile({
+  onNext,
+  onRestart,
+}: {
+  onNext: () => void;
+  /** When provided, renders a small "Start over" link in the bottom bar
+   *  that clears all saved state + session caches. Useful for testers
+   *  who keep hitting stale data from prior runs. */
+  onRestart?: () => void;
+}) {
   const { state, update } = useAssessment();
 
   const ready =
@@ -109,10 +118,48 @@ export default function StepProfile({ onNext }: { onNext: () => void }) {
       title="A quick hello."
       subhead="A few details to ground the exercise — and to help us understand how this framework lands across different kinds of work. Nothing here is shared publicly."
       bottom={
-        <PgBottom
-          onContinue={ready ? onNext : undefined}
-          continueDisabled={!ready}
-        />
+        <>
+          {onRestart ? (
+            <button
+              type="button"
+              onClick={() => {
+                if (
+                  typeof window !== "undefined" &&
+                  !window.confirm(
+                    "Start over? This will clear everything you've entered.",
+                  )
+                ) {
+                  return;
+                }
+                onRestart();
+              }}
+              style={{
+                background: "transparent",
+                border: "none",
+                color: "var(--ink-muted)",
+                textDecoration: "underline",
+                textUnderlineOffset: 3,
+                padding: "8px 4px",
+                fontFamily: "inherit",
+                cursor: "pointer",
+                fontSize: 14,
+                fontWeight: 600,
+              }}
+            >
+              Start over
+            </button>
+          ) : (
+            <span />
+          )}
+          <button
+            className="pg-pill primary"
+            onClick={onNext}
+            disabled={!ready}
+            style={{ marginLeft: "auto" }}
+          >
+            Continue →
+          </button>
+        </>
       }
     >
       <div
