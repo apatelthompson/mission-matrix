@@ -426,10 +426,10 @@ function drawItemsByQuadrant(
   c: Cursor,
   byQuad: Record<Quadrant, AssessmentItem[]>,
 ): Cursor {
-  // First content block = one quadrant header bar (26pt) + one item
-  // row (22pt) + breathing room. Reserve ~60pt so the section header
-  // never orphans above an empty page.
-  let cur = startSection(c, 60);
+  // Always start the detailed view on its own page so it reads as a
+  // distinct section, separate from the matrix overview.
+  const page = newPage(c.doc);
+  let cur: Cursor = { ...c, page, y: PAGE_HEIGHT - MARGIN_TOP };
   cur = drawEyebrow(cur, "Your items, in detail");
   cur = drawSpacer(cur, 4);
   cur = drawH2(cur, "Every task with its scores.");
