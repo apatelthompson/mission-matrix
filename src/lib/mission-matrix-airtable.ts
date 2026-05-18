@@ -146,6 +146,15 @@ export async function loadAssessment(
     email: String(fields.email ?? ""),
     consent_research: Boolean(fields.consent_research),
     consent_marketing: Boolean(fields.consent_marketing),
+    // v2 fields — present on rows submitted from /playground-v2 (or
+    // /assessment now that it's been promoted to use the same wizard).
+    career_stage: (fields.career_stage as never) ?? "",
+    function_area: (fields.function_area as never) ?? "",
+    team_size_managed: (fields.team_size_managed as never) ?? "",
+    brainstorm_craft: String(fields.brainstorm_craft ?? ""),
+    brainstorm_growth: String(fields.brainstorm_growth ?? ""),
+    brainstorm_routine: String(fields.brainstorm_routine ?? ""),
+    brainstorm_drain: String(fields.brainstorm_drain ?? ""),
     started_at: Date.now(),
   };
 }
