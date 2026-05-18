@@ -1,4 +1,10 @@
-import { PDFDocument, type PDFFont, type PDFPage, rgb } from "pdf-lib";
+import {
+  PDFDocument,
+  type PDFFont,
+  type PDFPage,
+  StandardFonts,
+  rgb,
+} from "pdf-lib";
 import fontkit from "@pdf-lib/fontkit";
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -97,18 +103,22 @@ const Q_META: Record<
 };
 
 // ─── Font loading ──────────────────────────────────────────────────
+// Body uses Helvetica (standard PDF font) — Airbnb Cereal as a custom
+// embedded TTF triggers ligature-rendering gaps in real viewers when
+// pdf-lib's per-glyph positioning is read against the font's OpenType
+// substitutions ("different" rendered as "diff erent" etc.). Helvetica
+// is a clean grotesque sans that reads close enough to the web flow.
+// Recoleta stays as the headings face — it doesn't show the bug.
 async function loadFonts(doc: PDFDocument) {
   const fontDir = path.join(process.cwd(), "public", "fonts");
   const read = (n: string) => fs.readFile(path.join(fontDir, n));
-  const [bodyR, bodyB, serifR, serifB] = await Promise.all([
-    read("AirbnbCerealBook.ttf"),
-    read("AirbnbCerealBold.ttf"),
+  const [serifR, serifB] = await Promise.all([
     read("Recoleta-Regular.otf"),
     read("Recoleta-Bold.otf"),
   ]);
   return {
-    body: await doc.embedFont(bodyR),
-    bodyBold: await doc.embedFont(bodyB),
+    body: await doc.embedFont(StandardFonts.Helvetica),
+    bodyBold: await doc.embedFont(StandardFonts.HelveticaBold),
     serif: await doc.embedFont(serifR),
     serifBold: await doc.embedFont(serifB),
   };
@@ -145,6 +155,28 @@ function ensureSpace(c: Cursor, needed: number): Cursor {
 }
 
 // ─── Text helpers ──────────────────────────────────────────────────
+/**
+ * Standard-font Helvetica only encodes WinAnsi-1252. Curly quotes,
+ * em-dashes, and arrows that a user might paste in (or that we draw
+ * for axis labels) will throw at encode time — sanitize first.
+ * Recoleta is embedded and handles Unicode fine, but we run all text
+ * through this for consistency.
+ */
+function sanitize(text: string): string {
+  return text
+    .replace(/[←⇐]/g, "<-")
+    .replace(/[→⇒]/g, "->")
+    .replace(/[↑]/g, "^")
+    .replace(/[↓]/g, "v")
+    .replace(/[—–]/g, " - ")
+    // collapse the spaces if the em-dash already had spaces around it
+    .replace(/ {2,}-/g, " -")
+    .replace(/- {2,}/g, "- ")
+    .replace(/[''‚‛]/g, "'")
+    .replace(/[""„‟]/g, '"')
+    .replace(/[…]/g, "...");
+}
+
 function wrapText(
   text: string,
   font: PDFFont,
@@ -189,11 +221,11 @@ function drawText(
   const maxWidth = options.maxWidth ?? CONTENT_W;
   const lineHeight = options.lineHeight ?? size * 1.35;
 
-  const lines = wrapText(text, font, size, maxWidth);
+  const lines = wrapText(sanitize(text), font, size, maxWidth);
   let cur = c;
   for (const line of lines) {
     cur = ensureSpace(cur, lineHeight);
-    cur.page.drawText(line, {
+    rawDraw(cur.page, line, {
       x,
       y: cur.y - size,
       font,
@@ -203,6 +235,16 @@ function drawText(
     cur = { ...cur, y: cur.y - lineHeight };
   }
   return cur;
+}
+
+/** Direct (non-wrapping) text draw — sanitizes the string before
+ *  handing to pdf-lib so callers don't have to. */
+function rawDraw(
+  page: PDFPage,
+  text: string,
+  options: Parameters<PDFPage["drawText"]>[1],
+) {
+  page.drawText(sanitize(text), options);
 }
 
 function drawSpacer(c: Cursor, h: number): Cursor {
@@ -247,23 +289,9 @@ function drawBody(c: Cursor, text: string, color = COLORS.inkSoft): Cursor {
 
 // ─── Sections ──────────────────────────────────────────────────────
 function drawCover(c: Cursor, state: AssessmentState): Cursor {
-  let cur = drawEyebrow(c, "Mission Matrix · Personalized report");
-  cur = drawSpacer(cur, 6);
-  cur = drawH1(cur, "Your Mission Matrix");
-  cur = drawSpacer(cur, 6);
-
-  const today = new Date().toLocaleDateString("en-US", {
-    month: "long",
-    day: "numeric",
-    year: "numeric",
-  });
-  const byline = state.name?.trim()
-    ? `${state.name.trim()} · ${today}`
-    : today;
-  cur = drawBody(cur, byline, COLORS.inkMuted);
-
-  cur = drawSpacer(cur, 28);
-  cur = drawEyebrow(cur, "About you");
+  // No title, no byline — straight into the profile. The user's name
+  // and date show up in the PDF's filename + metadata instead.
+  let cur = drawEyebrow(c, "About you");
   cur = drawSpacer(cur, 4);
 
   const fnLabel =
@@ -283,7 +311,7 @@ function drawCover(c: Cursor, state: AssessmentState): Cursor {
   const labelCol = 160;
   for (const [label, value] of rows) {
     cur = ensureSpace(cur, 22);
-    cur.page.drawText(label, {
+    rawDraw(cur.page, label, {
       x: MARGIN_X,
       y: cur.y - 11,
       font: cur.fonts.bodyBold,
@@ -298,7 +326,7 @@ function drawCover(c: Cursor, state: AssessmentState): Cursor {
     );
     let yOffset = 0;
     for (const line of wrapped) {
-      cur.page.drawText(line, {
+      rawDraw(cur.page, line, {
         x: MARGIN_X + labelCol,
         y: cur.y - 11 - yOffset,
         font: cur.fonts.body,
@@ -317,29 +345,25 @@ function drawMatrixOverview(
   c: Cursor,
   byQuad: Record<Quadrant, AssessmentItem[]>,
 ): Cursor {
-  let cur = drawSpacer(c, 30);
-  cur = drawEyebrow(cur, "The map");
-  cur = drawSpacer(cur, 4);
-  cur = drawH2(cur, "How your work lands across the quadrants.");
-  cur = drawSpacer(cur, 14);
-
   const gridW = CONTENT_W;
   const gridH = 280;
   const tileW = (gridW - 10) / 2;
   const tileH = (gridH - 10) / 2;
+  // Push to a new page if the grid + axis labels won't fit; the grid
+  // is one atomic visual so it shouldn't get split.
+  let cur = ensureSpace(drawSpacer(c, 26), gridH + 60);
 
-  cur = ensureSpace(cur, gridH + 60);
-
-  // X-axis labels
-  cur.page.drawText("← LOW UNIQUE EXPERTISE", {
+  // X-axis labels — positions imply direction (left/right of the grid)
+  // so we keep them word-only, no arrows.
+  rawDraw(cur.page, "LOW UNIQUE EXPERTISE", {
     x: MARGIN_X,
     y: cur.y - 10,
     font: cur.fonts.bodyBold,
     size: 8,
     color: COLORS.inkMuted,
   });
-  const xRight = "HIGH UNIQUE EXPERTISE →";
-  cur.page.drawText(xRight, {
+  const xRight = "HIGH UNIQUE EXPERTISE";
+  rawDraw(cur.page, xRight, {
     x:
       MARGIN_X +
       gridW -
@@ -369,7 +393,7 @@ function drawMatrixOverview(
       height: tileH,
       color: meta.bg,
     });
-    cur.page.drawText(meta.name, {
+    rawDraw(cur.page, meta.name, {
       x: t.x + 14,
       y: t.y + tileH - 22,
       font: cur.fonts.serifBold,
@@ -377,7 +401,7 @@ function drawMatrixOverview(
       color: meta.ink,
     });
     const countStr = String(items.length);
-    cur.page.drawText(countStr, {
+    rawDraw(cur.page, countStr, {
       x:
         t.x +
         tileW -
@@ -399,7 +423,7 @@ function drawMatrixOverview(
         tileW - 28,
       );
       for (const line of lines.slice(0, 1)) {
-        cur.page.drawText(line, {
+        rawDraw(cur.page, line, {
           x: t.x + 14,
           y: lineY,
           font: cur.fonts.body,
@@ -410,7 +434,7 @@ function drawMatrixOverview(
       }
     }
     if (items.length > previewItems.length) {
-      cur.page.drawText(`+ ${items.length - previewItems.length} more`, {
+      rawDraw(cur.page, `+ ${items.length - previewItems.length} more`, {
         x: t.x + 14,
         y: lineY,
         font: cur.fonts.bodyBold,
@@ -446,7 +470,7 @@ function drawItemsByQuadrant(
       height: headerH,
       color: Q_META[q].bg,
     });
-    cur.page.drawText(Q_META[q].name, {
+    rawDraw(cur.page, Q_META[q].name, {
       x: MARGIN_X + 12,
       y: cur.y - 18,
       font: cur.fonts.serifBold,
@@ -454,7 +478,7 @@ function drawItemsByQuadrant(
       color: Q_META[q].ink,
     });
     const subStr = Q_META[q].subtitle;
-    cur.page.drawText(subStr, {
+    rawDraw(cur.page, subStr, {
       x:
         MARGIN_X +
         CONTENT_W -
@@ -478,7 +502,7 @@ function drawItemsByQuadrant(
         height: 14,
         color: Q_META[q].ink,
       });
-      cur.page.drawText(chip, {
+      rawDraw(cur.page, chip, {
         x: MARGIN_X + 6,
         y: cur.y - 11,
         font: cur.fonts.bodyBold,
@@ -493,7 +517,7 @@ function drawItemsByQuadrant(
         CONTENT_W - chipW - 8,
       );
       for (let i = 0; i < lines.length; i++) {
-        cur.page.drawText(lines[i], {
+        rawDraw(cur.page, lines[i], {
           x: itemTextX,
           y: cur.y - 11 - i * 15.5,
           font: cur.fonts.body,
@@ -605,14 +629,14 @@ function drawAudition(
       height: headerH,
       color: meta.bg,
     });
-    cur.page.drawText(meta.name, {
+    rawDraw(cur.page, meta.name, {
       x: MARGIN_X + 14,
       y: cur.y - 16,
       font: cur.fonts.serifBold,
       size: 14,
       color: meta.ink,
     });
-    cur.page.drawText(`AI archetype: ${meta.archetype}`, {
+    rawDraw(cur.page, `AI archetype: ${meta.archetype}`, {
       x: MARGIN_X + 14,
       y: cur.y - 30,
       font: cur.fonts.bodyBold,
@@ -620,7 +644,7 @@ function drawAudition(
       color: meta.ink,
     });
     const sub = `${items.length} item${items.length === 1 ? "" : "s"}`;
-    cur.page.drawText(sub, {
+    rawDraw(cur.page, sub, {
       x:
         MARGIN_X +
         CONTENT_W -
@@ -635,7 +659,7 @@ function drawAudition(
 
     for (const it of items.slice(0, 6)) {
       cur = ensureSpace(cur, 16);
-      cur.page.drawText("•", {
+      rawDraw(cur.page, "•", {
         x: MARGIN_X + 4,
         y: cur.y - 11,
         font: cur.fonts.body,
@@ -644,7 +668,7 @@ function drawAudition(
       });
       const lines = wrapText(it.text, cur.fonts.body, 11, CONTENT_W - 20);
       for (let i = 0; i < lines.length; i++) {
-        cur.page.drawText(lines[i], {
+        rawDraw(cur.page, lines[i], {
           x: MARGIN_X + 16,
           y: cur.y - 11 - i * 15,
           font: cur.fonts.body,
