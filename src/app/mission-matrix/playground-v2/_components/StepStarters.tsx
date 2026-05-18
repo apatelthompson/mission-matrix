@@ -280,6 +280,7 @@ export default function StepStarters({
   return (
     <PgFrame
       title="What's on your plate?"
+      subhead="Edit these thought starters or add your own. Start with 5–7. Come back anytime to add more."
       bottom={
         <PgBottom
           onBack={onBack}
