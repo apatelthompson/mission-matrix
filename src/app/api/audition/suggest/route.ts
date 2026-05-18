@@ -32,11 +32,57 @@ interface RequestBody {
   profile: Profile;
 }
 
-const QUADRANT_TO_ARCHETYPE: Record<Quadrant, string> = {
-  craft: "Forcefield Agent — a long-running agent that shields the user from noise",
-  growth: "Chat with context — a thinking partner the user shares context and gaps with",
-  routine: "Automation — or elimination (sometimes the right answer is to stop doing it)",
-  drain: "Skill / Project — a packaged context the user can run to lighten the load",
+/**
+ * Per-quadrant constraint pack. Each defines:
+ *   archetype      — the canonical AI shape that fits this quadrant
+ *   suggest        — what kinds of helpers to suggest (the only kinds)
+ *   forbid         — patterns to avoid (helpers from other quadrants)
+ *   leadWith       — phrasing pattern for each sketch
+ */
+const QUADRANT_GUIDE: Record<
+  Quadrant,
+  {
+    archetype: string;
+    suggest: string;
+    forbid: string;
+    leadWith: string;
+  }
+> = {
+  craft: {
+    archetype: "Forcefield agent",
+    suggest:
+      "Long-running agents that quietly protect the user's attention so they can show up present and in lead. Think: background monitors, inbox triage that surfaces only signal, scheduling shields, presence/availability agents, agents that pre-digest noise before it reaches them. The agent runs continuously — not on-demand.",
+    forbid:
+      "Do NOT suggest chat threads, one-off prompts, Skills, Projects, or simple automations. The user lives in this quadrant — they need protection, not prompts.",
+    leadWith: '"Forcefield agent that…"',
+  },
+  growth: {
+    archetype: "Chat with strong memory",
+    suggest:
+      "A chat-based thinking partner with persistent memory of the user's context, gaps, and how they like to be challenged. Think: Claude Projects loaded with the right system prompt + reference docs, chat threads pre-seeded with the user's stretch goals + constraints, learning companions that quiz them, prompts that turn the chat into a coach rather than an answer machine.",
+    forbid:
+      "Do NOT suggest autonomous agents, Zaps/automations, or one-line scripts. The growth edge is where the user wants partnership and conversation, not delegation.",
+    leadWith:
+      '"Claude Project for…", "Chat thread that…", "System prompt that…"',
+  },
+  routine: {
+    archetype: "Automate — or eliminate",
+    suggest:
+      "Concrete automations (Zaps, scheduled scripts, n8n flows, GitHub Actions, calendar rules) OR an explicit elimination move (stop doing it, push to a shared wiki, batch with team, change the upstream process). Always give one of each shape when possible — automation AND elimination — since elimination is usually the higher-leverage answer.",
+    forbid:
+      "Do NOT suggest chat threads, persistent agents, or Skills. The user shouldn't be touching this work to begin with.",
+    leadWith:
+      '"Zap that…", "Scheduled script that…", "Eliminate by…", "Push to wiki:…"',
+  },
+  drain: {
+    archetype: "Skills / Projects",
+    suggest:
+      "Packaged, reusable context the user invokes when they need to do this kind of work — but the AI does the heavy lifting. Think: Claude Skills, Claude Projects, Custom GPTs, prompt templates, a saved system prompt + reference files combo. The user stays in the driver's seat but the friction drops.",
+    forbid:
+      "Do NOT suggest autonomous agents (this work needs the user's judgment) or simple automations (the work is too contextual). NO chat threads — Skills/Projects are the unit.",
+    leadWith:
+      '"Claude Skill that…", "Claude Project for…", "Template that…", "Custom GPT that…"',
+  },
 };
 
 export async function POST(req: Request) {
@@ -65,11 +111,11 @@ export async function POST(req: Request) {
       { status: 400 },
     );
   }
-  if (!QUADRANT_TO_ARCHETYPE[quadrant]) {
+  if (!QUADRANT_GUIDE[quadrant]) {
     return NextResponse.json({ error: "Unknown quadrant" }, { status: 400 });
   }
 
-  const archetype = QUADRANT_TO_ARCHETYPE[quadrant];
+  const guide = QUADRANT_GUIDE[quadrant];
   const quadrantMeta = QUADRANT_META[quadrant];
 
   // System prompt — gets cached. Same across all 4 quadrant calls in a
@@ -97,7 +143,15 @@ Your job is to suggest concrete, buildable AI helpers — not vague advice. Each
 
   const userText = `For each of these work items in the **${quadrantMeta.title}** quadrant (${quadrantMeta.subtitle}), suggest exactly 2 concrete AI helper sketches.
 
-The right shape of AI for this quadrant: ${archetype}.
+The ONLY archetype that fits this quadrant: **${guide.archetype}**.
+
+WHAT TO SUGGEST (every sketch must be one of these):
+${guide.suggest}
+
+WHAT NOT TO SUGGEST:
+${guide.forbid}
+
+Lead every sketch with one of these phrasing patterns: ${guide.leadWith}.
 
 Items:
 ${items.map((it, i) => `${i + 1}. ${it}`).join("\n")}
@@ -111,7 +165,7 @@ Respond as a single JSON object with this exact shape — no markdown, no prose:
   }
 }
 
-Each sketch: one sentence, specific, actionable. Lead with the helper type (e.g. "Forcefield agent that...", "Claude Project for...", "Zap that..."). No filler.`;
+Each sketch: one sentence, specific, actionable. No filler. Reference the user's role/team/company context where it adds signal.`;
 
   const client = new Anthropic({ apiKey });
 
