@@ -473,7 +473,7 @@ export default function StepConsent({
               checked={!!state.consent_research}
               onChange={(v) => update({ consent_research: v })}
               title="Help us refine the framework"
-              body="Your responses are saved either way so we can generate your PDF. Check this if you're OK with us using them anonymously — never with your name attached — to make the Mission Matrix better for future users."
+              body="Check this if you're okay with us using your anonymized data to make the Mission Matrix more helpful."
             />
           </div>
 
